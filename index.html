@@ -66,7 +66,13 @@
                   <input type="number" class="form-control" id="inv-years" value="10" min="1" max="100" step="1" required />
                 </div>
                 <div class="field">
-                  <label class="form-label" for="inv-contribution">Additional contributions</label>
+                  <div class="form-label-row">
+                    <label class="form-label mb-0" for="inv-contribution">Additional contributions</label>
+                    <div class="form-check contrib-timing-check">
+                      <input class="form-check-input contrib-after-start" type="checkbox" id="inv-contrib-after-start" data-timing-prefix="inv" checked />
+                      <label class="form-check-label contrib-timing-label" for="inv-contrib-after-start">after starting amount</label>
+                    </div>
+                  </div>
                   <div class="input-group">
                     <span class="input-group-text">$</span>
                     <input type="number" class="form-control" id="inv-contribution" value="200" min="0" step="10" />
@@ -186,7 +192,13 @@
 
                 <div id="cry-contrib-wrap">
                   <div class="field">
-                    <label class="form-label" for="cry-contribution">Additional contributions</label>
+                    <div class="form-label-row">
+                      <label class="form-label mb-0" for="cry-contribution">Additional contributions</label>
+                      <div class="form-check contrib-timing-check">
+                        <input class="form-check-input contrib-after-start" type="checkbox" id="cry-contrib-after-start" data-timing-prefix="cry" checked />
+                        <label class="form-check-label contrib-timing-label" for="cry-contrib-after-start">after starting amount</label>
+                      </div>
+                    </div>
                     <div class="input-group">
                       <input type="number" class="form-control" id="cry-contribution" value="0" min="0" step="10" />
                       <span class="input-group-text cry-symbol">USDT</span>
@@ -289,12 +301,16 @@
 
                 <!-- Default / Staking rate -->
                 <div class="field" id="cry-rate-default">
-                  <label class="form-label" for="cry-apr" id="cry-apr-label">Annual interest rate (APR)</label>
+                  <label class="form-label" for="cry-apr" id="cry-apr-label">Annual interest rate</label>
                   <div class="input-group">
                     <input type="number" class="form-control" id="cry-apr" value="5" min="0" max="500" step="0.01" required />
+                    <select class="form-select input-group-select" id="cry-rate-quote" aria-label="Rate quoted as APR or APY">
+                      <option value="apr" selected>APR</option>
+                      <option value="apy">APY</option>
+                    </select>
                     <span class="input-group-text">%</span>
                   </div>
-                  <div class="form-hint" id="cry-apr-hint">Platforms quote APR. Rewards usually accrue daily (or even every minute).</div>
+                  <div class="form-hint" id="cry-apr-hint">Binance-style products quote APR. Pick APY for Meru-style quotes — we convert before compounding daily.</div>
                 </div>
 
                 <!-- Simple Earn rates -->
@@ -358,7 +374,13 @@
                   </div>
                 </div>
                 <div class="field">
-                  <label class="form-label" for="etf-contribution">Additional contributions</label>
+                  <div class="form-label-row">
+                    <label class="form-label mb-0" for="etf-contribution">Additional contributions</label>
+                    <div class="form-check contrib-timing-check">
+                      <input class="form-check-input contrib-after-start" type="checkbox" id="etf-contrib-after-start" data-timing-prefix="etf" checked />
+                      <label class="form-check-label contrib-timing-label" for="etf-contrib-after-start">after starting amount</label>
+                    </div>
+                  </div>
                   <div class="input-group">
                     <span class="input-group-text">$</span>
                     <input type="number" class="form-control" id="etf-contribution" value="300" min="0" step="10" />

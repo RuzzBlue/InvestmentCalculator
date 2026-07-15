@@ -332,6 +332,37 @@ body {
   padding-top: 0.15rem;
 }
 
+.form-label-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  margin-bottom: 0.35rem;
+}
+
+.contrib-timing-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+  padding-left: 0;
+  min-height: 0;
+}
+
+.contrib-timing-check .form-check-input {
+  margin-top: 0;
+  margin-left: 0;
+  float: none;
+}
+
+.contrib-timing-label {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted, #6b7a72);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 .form-check-input:checked {
   background-color: var(--accent);
   border-color: var(--accent);

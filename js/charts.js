@@ -76,7 +76,7 @@ const Charts = (() => {
 
   /**
    * BAR charts = completed buckets (end-of-period).
-   * Tick 0 = Start, tick N = end of period N.
+   * Tick 0 = Start (deposit), tick N = end of period N.
    */
   function barAxisLabel(value, axisUnit) {
     if (value === 0) return "Start";
@@ -97,7 +97,7 @@ const Charts = (() => {
     return periodNoun(axisUnit, n);
   }
 
-  /** Hover keeps fine detail (M/Y etc.) inside the period. */
+  /** Hover: Start at t=0; then fine detail at each end-of-period point. */
   function lineHoverLabel(period, detailGrain, axisUnit) {
     if (!period) return "Start";
 
@@ -174,6 +174,7 @@ const Charts = (() => {
     const maxPeriod = Number(source[source.length - 1].period) || 0;
     const points = source.map((r) => {
       const period = Number(r.period) || 0;
+      // Start at x=0; period k at end of that sub-period (M1 → 1/12 of Year 1).
       const x = maxPeriod <= 0 ? 0 : (period / maxPeriod) * axisCount;
       return {
         x,

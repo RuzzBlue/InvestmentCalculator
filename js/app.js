@@ -105,6 +105,7 @@
     bindTableControls();
     bindViewToggle();
     bindContributionGrowth();
+    bindContribTiming();
     bindChartTypeToggle();
     updateViewChrome();
     document.getElementById("btn-export-pdf")?.addEventListener("click", () => {
@@ -202,6 +203,27 @@
     }
   }
 
+  function bindContribTiming() {
+    document.querySelectorAll(".contrib-after-start").forEach((el) => {
+      el.addEventListener("change", () => syncContribTimingLabel(el.dataset.timingPrefix));
+      syncContribTimingLabel(el.dataset.timingPrefix);
+    });
+  }
+
+  function syncContribTimingLabel(prefix) {
+    if (!prefix) return;
+    const checked = document.getElementById(`${prefix}-contrib-after-start`)?.checked;
+    const label = document.querySelector(`label.contrib-timing-label[for="${prefix}-contrib-after-start"]`);
+    if (label) {
+      label.textContent = checked ? "after starting amount" : "with starting amount";
+    }
+  }
+
+  function readContribAfterStart(prefix) {
+    const el = document.getElementById(`${prefix}-contrib-after-start`);
+    return el ? el.checked : true;
+  }
+
   function bindContributionGrowth() {
     document.querySelectorAll(".grow-toggle").forEach((el) => {
       el.addEventListener("change", () => syncGrowFields(el.dataset.growPrefix));
@@ -250,6 +272,7 @@
         years: val("inv-years"),
         contribution: val("inv-contribution"),
         contribFreq: sel("inv-contrib-freq"),
+        contribAfterStart: readContribAfterStart("inv"),
         contribGrowth: readContribGrowth("inv"),
         rate: val("inv-rate"),
         compound: sel("inv-compound"),
@@ -266,10 +289,12 @@
         asset: sel("cry-asset"),
         contribution: val("cry-contribution"),
         contribFreq: sel("cry-contrib-freq"),
+        contribAfterStart: readContribAfterStart("cry"),
         contribGrowth: readContribGrowth("cry"),
         period: val("cry-period"),
         periodUnit: sel("cry-period-unit"),
         apr: val("cry-apr"),
+        rateQuote: cryType === "default" ? (sel("cry-rate-quote") || "apr") : "apr",
         regularApr: val("cry-regular-apr"),
         bonusApr: val("cry-bonus-apr"),
         bonusCap: val("cry-bonus-cap"),
@@ -287,6 +312,7 @@
         principal: val("etf-principal"),
         contribution: val("etf-contribution"),
         contribFreq: sel("etf-contrib-freq"),
+        contribAfterStart: readContribAfterStart("etf"),
         contribGrowth: readContribGrowth("etf"),
         period: val("etf-period"),
         periodUnit: sel("etf-period-unit"),
@@ -332,6 +358,7 @@
     const contrib = document.getElementById("cry-contrib-wrap");
     const aprLabel = document.getElementById("cry-apr-label");
     const aprHint = document.getElementById("cry-apr-hint");
+    const rateQuote = document.getElementById("cry-rate-quote");
 
     // reset
     flexPeriod?.classList.remove("d-none");
@@ -340,6 +367,7 @@
     simpleEarn?.classList.add("d-none");
     fixedRate?.classList.add("d-none");
     contrib?.classList.remove("d-none");
+    rateQuote?.classList.remove("d-none");
 
     if (type === "simple_earn") {
       rateDefault?.classList.add("d-none");
@@ -353,9 +381,14 @@
     } else if (type === "staking") {
       if (aprLabel) aprLabel.textContent = "Staking APR";
       if (aprHint) aprHint.textContent = "Modeled as daily compounding when rewards auto-restake.";
+      // Staking path always takes APR; hide quote-unit picker to avoid mix-ups.
+      rateQuote?.classList.add("d-none");
+      if (rateQuote) rateQuote.value = "apr";
     } else {
-      if (aprLabel) aprLabel.textContent = "Annual interest rate (APR)";
-      if (aprHint) aprHint.textContent = "Platforms quote APR. Rewards usually accrue daily (or even every minute).";
+      if (aprLabel) aprLabel.textContent = "Annual interest rate";
+      if (aprHint) {
+        aprHint.textContent = "Default APR (Binance-style). Switch to APY for quotes like Meru — converted to APR before daily compounding.";
+      }
     }
   }
 

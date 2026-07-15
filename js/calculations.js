@@ -56,6 +56,34 @@ const Calculations = (() => {
     return Math.pow(1 + r / n, n) - 1;
   }
 
+  /** Nominal APR implied by a quoted APY under n compounds/year */
+  function apyToApr(apyPct, n) {
+    const y = apyPct / 100;
+    if (n <= 0) return apyPct;
+    if (y <= -1) return 0;
+    return n * (Math.pow(1 + y, 1 / n) - 1) * 100;
+  }
+
+  /**
+   * Flexible earn: platforms may quote APR or APY. Engine always compounds nominal APR daily.
+   * APY → APR uses n = 365 (matches our daily-compound model).
+   */
+  function resolveFlexibleApr(input) {
+    const quoted = Number(input.apr) || 0;
+    if (input.rateQuote === "apy") {
+      return {
+        apr: apyToApr(quoted, DAYS_YEAR),
+        quotedRate: quoted,
+        rateQuote: "apy",
+      };
+    }
+    return {
+      apr: quoted,
+      quotedRate: quoted,
+      rateQuote: "apr",
+    };
+  }
+
   function normalizeGrowth(growth) {
     if (!growth || !growth.enabled) return null;
     return {
@@ -107,9 +135,10 @@ const Calculations = (() => {
    * Contribution cash-flows on an event timeline (independent of compounding steps).
    *
    * Initial deposit is the t=0 transfer (this month / quarter / year).
-   * Additional contributions start on the *next* interval:
-   *   monthly → events at 1/12, 2/12, … years (first extra = next month)
-   * So end of year 1 with $100 start + $100/mo = $1,200 invested (11 extras), not $1,300.
+   * When contribAfterStart is true (default), additional contributions start on the
+   * *next* interval (monthly → events at 1/12, 2/12, … — first extra = next month).
+   * When false (“with starting amount”), the first recurring deposit lands in the
+   * same opening period as the principal (events at 0, 1/12, … — typical online calculators).
    *
    * Half-open window [t0, t1) so a yearly boundary event lands in the following step.
    */
@@ -118,6 +147,7 @@ const Calculations = (() => {
     contribFreq = "monthly",
     stepsPerYear = 12,
     growth = null,
+    contribAfterStart = true,
   }) {
     const g = normalizeGrowth(growth);
     let currentAmount = Number(baseContribution) || 0;
@@ -126,8 +156,8 @@ const Calculations = (() => {
     const spy = Math.max(1, stepsPerYear);
     const growthPerYear = !g ? 0 : g.every === "quarter" ? 4 : 1;
     let nextGrowthBoundary = growthPerYear > 0 ? 1 / growthPerYear : Infinity;
-    // Event k (k=1,2,…) occurs at time k/eventsPerYear.
-    let nextEvent = 1;
+    // Event k occurs at time k/eventsPerYear; k=0 only when contribAfterStart is false.
+    let nextEvent = contribAfterStart ? 1 : 0;
 
     return {
       /** Call once per simulation period (1-based index). */
@@ -199,6 +229,7 @@ const Calculations = (() => {
     contribution = 0,
     contribFreq = "monthly",
     contribGrowth = null,
+    contribAfterStart = true,
     labelPrefix = "Period",
   }) {
     const n = Math.max(1, compoundsPerYear);
@@ -209,6 +240,7 @@ const Calculations = (() => {
       contribFreq,
       stepsPerYear: n,
       growth: contribGrowth,
+      contribAfterStart,
     });
 
     let balance = principal;
@@ -216,6 +248,8 @@ const Calculations = (() => {
     let endingContribution = Number(contribution) || 0;
     const rows = [];
 
+    // t=0 deposit: money is in, no compound period has finished yet (earnings = 0).
+    // Period 1+ = end of each compound step (M1 has the first month's interest, etc.).
     rows.push({
       period: 0,
       label: "Start",
@@ -306,6 +340,7 @@ const Calculations = (() => {
       contribution: Number(input.contribution) || 0,
       contribFreq: input.contribFreq,
       contribGrowth: input.contribGrowth,
+      contribAfterStart: input.contribAfterStart !== false,
     });
 
     // Display-friendly schedule: for daily over long spans, sample monthly
@@ -330,7 +365,11 @@ const Calculations = (() => {
   function calculateCryptoFlexible(input, mode) {
     const days = Math.max(1, toDays(Number(input.period), input.periodUnit));
     const years = days / DAYS_YEAR;
-    const apr = Number(input.apr) || 0;
+    // APY quoting is only for Flexible (default); staking stays APR-in.
+    const resolved = mode === "default"
+      ? resolveFlexibleApr(input)
+      : { apr: Number(input.apr) || 0, quotedRate: Number(input.apr) || 0, rateQuote: "apr" };
+    const apr = resolved.apr;
     const principal = Number(input.principal) || 0;
     const contribution = Number(input.contribution) || 0;
     const contribFreq = input.contribFreq || "monthly";
@@ -346,6 +385,7 @@ const Calculations = (() => {
       contribFreq,
       stepsPerYear,
       growth: input.contribGrowth,
+      contribAfterStart: input.contribAfterStart !== false,
     });
 
     let balance = principal;
@@ -391,6 +431,19 @@ const Calculations = (() => {
       meta: { compoundsPerYear: DAYS_YEAR, years, annualRatePct: apr },
     };
 
+    const flexNotes = (() => {
+      if (mode === "staking") {
+        return ["Modeled as daily compounding of staking APR (typical when rewards auto-restake)."];
+      }
+      if (resolved.rateQuote === "apy") {
+        return [
+          `Quoted ${resolved.quotedRate.toFixed(2)}% APY converted to ≈ ${apr.toFixed(4)}% APR for daily compounding (n=365).`,
+          "Modeled like flexible earn: daily compounding on the growing balance.",
+        ];
+      }
+      return ["Modeled like flexible earn: daily compounding of the quoted APR on the growing balance."];
+    })();
+
     return {
       type: "crypto",
       subtype: mode,
@@ -398,14 +451,19 @@ const Calculations = (() => {
       currency: "",
       asset: input.asset || "USDT",
       ratePct: apr,
+      rateQuote: resolved.rateQuote,
+      quotedRate: resolved.quotedRate,
       compoundsPerYear: DAYS_YEAR,
       years,
       days,
       displayUnit: useDaily ? "day" : "month",
-      notes: mode === "staking"
-        ? ["Modeled as daily compounding of staking APR (typical when rewards auto-restake)."]
-        : ["Modeled like flexible earn: daily compounding of the quoted APR on the growing balance."],
-      ...finalize(base, rows, apr, DAYS_YEAR, years, input),
+      notes: flexNotes,
+      ...finalize(base, rows, apr, DAYS_YEAR, years, {
+        ...input,
+        // Scenarios must scale the engineered APR, not re-read a raw APY quote.
+        apr,
+        rateQuote: "apr",
+      }),
     };
   }
 
@@ -430,6 +488,7 @@ const Calculations = (() => {
       contribFreq,
       stepsPerYear,
       growth: input.contribGrowth,
+      contribAfterStart: input.contribAfterStart !== false,
     });
 
     let balance = principal; // earn wallet (compounds)
@@ -593,6 +652,7 @@ const Calculations = (() => {
       contribFreq,
       stepsPerYear: 12,
       growth: input.contribGrowth,
+      contribAfterStart: input.contribAfterStart !== false,
     });
     const monthlyPrice = priceReturn / 100 / 12;
     const monthlyExpense = expenseRatio / 100 / 12;
@@ -706,6 +766,7 @@ const Calculations = (() => {
       contribution,
       contribFreq,
       contribGrowth: input.contribGrowth,
+      contribAfterStart: input.contribAfterStart !== false,
     });
     const displayRows = months > 120
       ? downsampleToYears(result.rows)
@@ -826,6 +887,7 @@ const Calculations = (() => {
         contribution: Number(input.contribution) || 0,
         contribFreq: input.contribFreq,
         contribGrowth: input.contribGrowth,
+        contribAfterStart: input.contribAfterStart !== false,
       });
     }
 
@@ -873,6 +935,7 @@ const Calculations = (() => {
         contribFreq: input.contribFreq || "monthly",
         stepsPerYear,
         growth: input.contribGrowth,
+        contribAfterStart: input.contribAfterStart !== false,
       });
       let balance = Number(input.principal) || 0;
       let invested = balance;
@@ -909,6 +972,7 @@ const Calculations = (() => {
         contribution: Number(input.contribution) || 0,
         contribFreq: input.contribFreq,
         contribGrowth: input.contribGrowth,
+        contribAfterStart: input.contribAfterStart !== false,
       });
     }
 
@@ -930,6 +994,7 @@ const Calculations = (() => {
       contribFreq,
       stepsPerYear: 12,
       growth: input.contribGrowth,
+      contribAfterStart: input.contribAfterStart !== false,
     });
     const monthlyPrice = priceReturn / 100 / 12;
     const monthlyExpense = expenseRatio / 100 / 12;
@@ -977,6 +1042,7 @@ const Calculations = (() => {
       contribFreq,
       stepsPerYear,
       growth: input.contribGrowth,
+      contribAfterStart: input.contribAfterStart !== false,
     });
     let balance = principal;
     let invested = principal;
