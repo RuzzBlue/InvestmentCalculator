@@ -726,6 +726,31 @@ body {
   padding: 0.25rem 0.7rem;
 }
 
+.chart-grain-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.chart-grain-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.chart-grain-select {
+  width: auto;
+  min-width: 8.5rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: var(--paper-2);
+  border: 1px solid rgba(28, 36, 32, 0.1);
+  border-radius: 999px;
+  padding: 0.28rem 1.8rem 0.28rem 0.75rem;
+}
+
 .chart-type-toggle {
   display: inline-flex;
   background: var(--paper-2);

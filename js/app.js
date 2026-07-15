@@ -120,6 +120,9 @@
     document.getElementById("btn-chart-line")?.addEventListener("click", () => {
       Charts.setGrowthType("line");
     });
+    document.getElementById("chartGrainSelect")?.addEventListener("change", (e) => {
+      Charts.setChartGrain(e.target.value);
+    });
   }
 
   function bindViewToggle() {

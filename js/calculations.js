@@ -807,27 +807,107 @@ const Calculations = (() => {
     });
   }
 
-  function buildChartMeta(input, years) {
-    if (input?._source === "investment") {
-      return {
-        axisUnit: "years",
-        axisCount: Math.max(1, Math.round(Number(input.years) || years || 1)),
-      };
+  function horizonToDays(unit, count) {
+    const n = Math.max(1, Number(count) || 1);
+    switch (unit) {
+      case "days": return n;
+      case "months": return Math.round(n * 30.4167);
+      case "quarters": return Math.round(n * 91.25);
+      case "years":
+      default: return Math.round(n * DAYS_YEAR);
     }
-    if (input?._source === "crypto" && input.cryType === "fixed_term") {
-      const days = input.fixedTerm === "custom"
+  }
+
+  function unitLabel(unit, count) {
+    const n = Math.max(1, Number(count) || 1);
+    const singular = unit === "days" ? "day"
+      : unit === "months" ? "month"
+      : unit === "quarters" ? "quarter"
+      : "year";
+    const word = n === 1 ? singular : (singular === "day" ? "days"
+      : singular === "month" ? "months"
+      : singular === "quarter" ? "quarters"
+      : "years");
+    return `${n} ${word}`;
+  }
+
+  /**
+   * Short horizons auto-step to a finer axis:
+   * 1 year → 12 months, 1 month → 30 days, 1 quarter → 3 months.
+   */
+  function autoChartSubdivision(baseUnit, baseCount) {
+    const unit = baseUnit || "years";
+    const count = Math.max(1, Math.round(Number(baseCount) || 1));
+    if (unit === "years" && count === 1) return { unit: "months", count: 12 };
+    if (unit === "months" && count === 1) return { unit: "days", count: 30 };
+    if (unit === "quarters" && count === 1) return { unit: "months", count: 3 };
+    return { unit, count };
+  }
+
+  function buildSubdivisionOptions(baseUnit, baseCount) {
+    const days = horizonToDays(baseUnit, baseCount);
+    const auto = autoChartSubdivision(baseUnit, baseCount);
+    const seen = new Set();
+    const opts = [];
+    const push = (id, unit, count) => {
+      const c = Math.max(1, Math.round(Number(count) || 1));
+      const key = `${unit}:${c}`;
+      if (seen.has(key) && id !== "auto") return;
+      seen.add(key);
+      const label = id === "auto"
+        ? `Auto · ${unitLabel(unit, c)}`
+        : unitLabel(unit, c);
+      opts.push({ id, unit, count: c, label });
+    };
+
+    push("auto", auto.unit, auto.count);
+    push(baseUnit, baseUnit, baseCount);
+
+    if (days >= DAYS_YEAR) {
+      push("years", "years", Math.max(1, Math.round(days / DAYS_YEAR)));
+    }
+    if (days >= 90) {
+      push("quarters", "quarters", Math.max(1, Math.round(days / 91.25)));
+    }
+    if (days >= 28) {
+      const months = Math.max(1, Math.round(days / 30.4167));
+      if (months <= 120) push("months", "months", months);
+    }
+    if (days <= 120) {
+      push("days", "days", Math.max(1, Math.round(days)));
+    }
+
+    return opts;
+  }
+
+  function buildChartMeta(input, years) {
+    let baseUnit = "years";
+    let baseCount = Math.max(1, Math.round(years || 1));
+
+    if (input?._source === "investment") {
+      baseUnit = "years";
+      baseCount = Math.max(1, Math.round(Number(input.years) || years || 1));
+    } else if (input?._source === "crypto" && input.cryType === "fixed_term") {
+      baseUnit = "days";
+      baseCount = input.fixedTerm === "custom"
         ? Math.max(1, Number(input.customDays) || 1)
         : Math.max(1, Number(input.fixedTerm) || 30);
-      return { axisUnit: "days", axisCount: days };
+    } else if (input?._source === "crypto" || input?._source === "etf") {
+      baseUnit = input.periodUnit || "years";
+      baseCount = Math.max(1, Math.round(Number(input.period) || 1));
     }
-    if (input?._source === "crypto" || input?._source === "etf") {
-      const unit = input.periodUnit || "years";
-      const count = Math.max(1, Math.round(Number(input.period) || 1));
-      return { axisUnit: unit, axisCount: count };
-    }
+
+    const auto = autoChartSubdivision(baseUnit, baseCount);
+    const subdivisions = buildSubdivisionOptions(baseUnit, baseCount);
     return {
-      axisUnit: "years",
-      axisCount: Math.max(1, Math.round(years || 1)),
+      baseUnit,
+      baseCount,
+      axisUnit: auto.unit,
+      axisCount: auto.count,
+      autoUnit: auto.unit,
+      autoCount: auto.count,
+      subdivisions,
+      allowsGrainSelect: subdivisions.length > 1,
     };
   }
 

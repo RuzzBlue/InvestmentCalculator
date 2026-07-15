@@ -8,6 +8,7 @@ const Charts = (() => {
   let scenarioChart = null;
   let lastGrowthResult = null;
   let growthTypeOverride = null; // null = use result.chartPreference
+  let grainOverride = "auto"; // subdivision id from chartMeta.subdivisions
 
   const COLORS = {
     balance: "#0f6b4c",
@@ -41,7 +42,35 @@ const Charts = (() => {
     scenarioChart = null;
   }
 
+  function pickTypeForCount(axisCount) {
+    return axisCount <= 10 ? "bar" : "line";
+  }
+
+  function allowsToggleForCount(axisCount) {
+    return axisCount >= 1 && axisCount <= 30;
+  }
+
+  function resolveGrainOption(result) {
+    const meta = result.chartMeta || {};
+    const opts = meta.subdivisions || [];
+    const id = grainOverride || "auto";
+    const found = opts.find((o) => o.id === id);
+    if (found) return found;
+    return opts.find((o) => o.id === "auto") || {
+      id: "auto",
+      unit: meta.axisUnit || "years",
+      count: meta.axisCount || Math.max(1, Math.round(result.years || 1)),
+    };
+  }
+
   function getAxisMeta(result) {
+    const grain = resolveGrainOption(result);
+    if (grain?.unit && grain?.count) {
+      return {
+        axisUnit: grain.unit,
+        axisCount: Math.max(1, grain.count),
+      };
+    }
     if (result.chartMeta?.axisUnit && result.chartMeta?.axisCount) {
       return {
         axisUnit: result.chartMeta.axisUnit,
@@ -107,8 +136,14 @@ const Charts = (() => {
       return `M${month} · Year ${year}`;
     }
 
+    if (detailGrain === "month" && axisUnit === "quarters") {
+      const quarter = Math.ceil(period / 3);
+      const monthInQ = ((period - 1) % 3) + 1;
+      return `M${monthInQ} · Quarter ${quarter}`;
+    }
+
     if (detailGrain === "month") {
-      return periodNoun(axisUnit === "months" ? "months" : axisUnit, period);
+      return periodNoun("months", period);
     }
 
     if (detailGrain === "day" && axisUnit === "years") {
@@ -117,6 +152,12 @@ const Charts = (() => {
       const month = Math.min(12, Math.max(1, Math.ceil(dayInYear / 30.4167)));
       const day = Math.max(1, Math.round(dayInYear - (month - 1) * 30.4167));
       return `Day ${day} · M${month} · Year ${year}`;
+    }
+
+    if (detailGrain === "day" && axisUnit === "months") {
+      const month = Math.ceil(period / 30.4167);
+      const day = Math.max(1, Math.round(period - (month - 1) * 30.4167));
+      return `Day ${day} · Month ${month}`;
     }
 
     if (detailGrain === "day") {
@@ -206,11 +247,29 @@ const Charts = (() => {
   }
 
   function resolveGrowthType(result) {
-    if (!result.chartAllowsToggle) return "line";
+    const { axisCount } = getAxisMeta(result);
+    if (!allowsToggleForCount(axisCount)) return "line";
     if (growthTypeOverride === "bar" || growthTypeOverride === "line") {
       return growthTypeOverride;
     }
-    return result.chartPreference === "bar" ? "bar" : "line";
+    return pickTypeForCount(axisCount);
+  }
+
+  function updateGrainSelectUi(result) {
+    const wrap = document.getElementById("chartGrainWrap");
+    const select = document.getElementById("chartGrainSelect");
+    const opts = result.chartMeta?.subdivisions || [];
+    const show = opts.length > 1;
+    if (wrap) wrap.classList.toggle("d-none", !show);
+    if (!select || !show) return;
+
+    const current = grainOverride && opts.some((o) => o.id === grainOverride)
+      ? grainOverride
+      : "auto";
+    select.innerHTML = opts.map((o) =>
+      `<option value="${o.id}">${escapeHtml(o.label)}</option>`
+    ).join("");
+    select.value = current;
   }
 
   function updateGrowthToggleUi(result, activeType) {
@@ -218,9 +277,8 @@ const Charts = (() => {
     const badge = document.getElementById("chartModeBadge");
     const btnBar = document.getElementById("btn-chart-bar");
     const btnLine = document.getElementById("btn-chart-line");
-    const allows = !!result.chartAllowsToggle;
-    const axisCount = result.chartMeta?.axisCount || getAxisMeta(result).axisCount;
-    const unit = result.chartMeta?.axisUnit || getAxisMeta(result).axisUnit;
+    const { axisCount, axisUnit: unit } = getAxisMeta(result);
+    const allows = allowsToggleForCount(axisCount);
     const unitWord = unit === "years" ? "years"
       : unit === "months" ? "months"
       : unit === "quarters" ? "quarters"
@@ -239,9 +297,17 @@ const Charts = (() => {
   }
 
   function setGrowthType(type) {
-    if (!lastGrowthResult?.chartAllowsToggle) return;
+    const axisCount = lastGrowthResult ? getAxisMeta(lastGrowthResult).axisCount : 0;
+    if (!allowsToggleForCount(axisCount)) return;
     if (type !== "bar" && type !== "line") return;
     growthTypeOverride = type;
+    const canvas = document.getElementById("growthChart");
+    if (canvas && lastGrowthResult) renderGrowth(canvas, lastGrowthResult);
+  }
+
+  function setChartGrain(grainId) {
+    grainOverride = grainId || "auto";
+    growthTypeOverride = null; // re-pick bar/line for the new tick count
     const canvas = document.getElementById("growthChart");
     if (canvas && lastGrowthResult) renderGrowth(canvas, lastGrowthResult);
   }
@@ -251,10 +317,12 @@ const Charts = (() => {
 
     if (lastGrowthResult !== result) {
       growthTypeOverride = null;
+      grainOverride = "auto";
       lastGrowthResult = result;
     }
 
     const type = resolveGrowthType(result);
+    updateGrainSelectUi(result);
     updateGrowthToggleUi(result, type);
 
     const currency = result.currency;
@@ -564,5 +632,5 @@ const Charts = (() => {
     return out;
   }
 
-  return { renderAll, destroyAll, formatMoney, getChartImages, setGrowthType };
+  return { renderAll, destroyAll, formatMoney, getChartImages, setGrowthType, setChartGrain };
 })();
