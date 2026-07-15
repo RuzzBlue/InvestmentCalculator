@@ -105,11 +105,21 @@
     bindTableControls();
     bindViewToggle();
     bindContributionGrowth();
+    bindChartTypeToggle();
     updateViewChrome();
     document.getElementById("btn-export-pdf")?.addEventListener("click", () => {
       if (state.lastResult) PdfExport.exportResults(state.lastResult);
     });
   });
+
+  function bindChartTypeToggle() {
+    document.getElementById("btn-chart-bar")?.addEventListener("click", () => {
+      Charts.setGrowthType("bar");
+    });
+    document.getElementById("btn-chart-line")?.addEventListener("click", () => {
+      Charts.setGrowthType("line");
+    });
+  }
 
   function bindViewToggle() {
     document.getElementById("btn-show-guide")?.addEventListener("click", () => setView("guide"));
@@ -444,14 +454,6 @@
         ${c.delta}
       </article>
     `).join("");
-
-    // Chart badge
-    const badge = document.getElementById("chartModeBadge");
-    if (badge) {
-      badge.textContent = result.chartPreference === "bar"
-        ? "Bar chart · short horizon"
-        : "Line chart · growth curve";
-    }
 
     Charts.renderAll(result);
     renderTable(result);

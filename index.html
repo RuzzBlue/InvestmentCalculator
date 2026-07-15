@@ -534,7 +534,17 @@
               <div class="section-block">
                 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
                   <h3 class="section-heading mb-0">Growth over time</h3>
-                  <span class="chart-mode-badge" id="chartModeBadge"></span>
+                  <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <div class="chart-type-toggle d-none" id="chartTypeToggle" role="group" aria-label="Chart type">
+                      <button type="button" class="btn btn-chart-type" id="btn-chart-bar" data-chart-type="bar">
+                        <i class="fa-solid fa-chart-column me-1"></i>Bars
+                      </button>
+                      <button type="button" class="btn btn-chart-type" id="btn-chart-line" data-chart-type="line">
+                        <i class="fa-solid fa-chart-line me-1"></i>Line
+                      </button>
+                    </div>
+                    <span class="chart-mode-badge" id="chartModeBadge"></span>
+                  </div>
                 </div>
                 <div class="chart-wrap" id="growthChartWrap">
                   <div class="chart-fixed-tooltip d-none" id="growthTooltip" aria-live="polite"></div>

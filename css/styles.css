@@ -695,6 +695,36 @@ body {
   padding: 0.25rem 0.7rem;
 }
 
+.chart-type-toggle {
+  display: inline-flex;
+  background: var(--paper-2);
+  border-radius: 999px;
+  padding: 0.18rem;
+  gap: 0.15rem;
+}
+
+.btn-chart-type {
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-weight: 600;
+  font-size: 0.78rem;
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  line-height: 1.2;
+}
+
+.btn-chart-type:hover:not(.active) {
+  color: var(--ink);
+  background: rgba(255, 253, 248, 0.55);
+}
+
+.btn-chart-type.active {
+  background: var(--surface-solid);
+  color: var(--accent-deep);
+  box-shadow: 0 2px 8px rgba(28, 36, 32, 0.08);
+}
+
 /* Table */
 .table-controls {
   display: flex;

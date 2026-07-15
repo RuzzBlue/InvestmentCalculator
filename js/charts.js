@@ -6,6 +6,8 @@ const Charts = (() => {
   let growthChart = null;
   let compositionChart = null;
   let scenarioChart = null;
+  let lastGrowthResult = null;
+  let growthTypeOverride = null; // null = use result.chartPreference
 
   const COLORS = {
     balance: "#0f6b4c",
@@ -62,9 +64,7 @@ const Charts = (() => {
     return "month";
   }
 
-  function axisTickLabel(value, axisUnit) {
-    if (value === 0) return "Start";
-    const n = Math.round(value);
+  function periodNoun(axisUnit, n) {
     switch (axisUnit) {
       case "months": return `Month ${n}`;
       case "quarters": return `Quarter ${n}`;
@@ -74,41 +74,94 @@ const Charts = (() => {
     }
   }
 
-  /** Even ticks from 0 → axisCount, always including the final value. */
-  function buildAxisTicks(axisCount) {
-    const max = Math.max(1, axisCount);
-    if (max <= 20) {
-      return Array.from({ length: max + 1 }, (_, i) => i);
-    }
-    const target = 12;
-    const step = Math.ceil(max / target);
-    const vals = [0];
-    for (let v = step; v < max; v += step) vals.push(v);
-    if (vals[vals.length - 1] !== max) vals.push(max);
-    return vals;
+  /**
+   * BAR charts = completed buckets (end-of-period).
+   * Tick 0 = Start, tick N = end of period N.
+   */
+  function barAxisLabel(value, axisUnit) {
+    if (value === 0) return "Start";
+    return periodNoun(axisUnit, Math.round(value));
   }
 
-  function friendlyHoverLabel(period, detailGrain) {
+  function barHoverLabel(bucketIndex, axisUnit) {
+    if (bucketIndex === 0) return "Start";
+    return periodNoun(axisUnit, bucketIndex);
+  }
+
+  /**
+   * LINE charts: labels centered in each period band (0.5, 1.5, …).
+   * Midpoint between start and end of the period — not glued to a grid line.
+   */
+  function lineAxisLabel(value, axisUnit) {
+    const n = Math.round(value + 0.5); // 0.5 → 1, 1.5 → 2, …
+    return periodNoun(axisUnit, n);
+  }
+
+  /** Hover keeps fine detail (M/Y etc.) inside the period. */
+  function lineHoverLabel(period, detailGrain, axisUnit) {
     if (!period) return "Start";
-    if (detailGrain === "month") {
+
+    if (detailGrain === "month" && axisUnit === "years") {
       const year = Math.ceil(period / 12);
       const month = ((period - 1) % 12) + 1;
       return `M${month} · Year ${year}`;
     }
-    if (detailGrain === "day") {
+
+    if (detailGrain === "month") {
+      return periodNoun(axisUnit === "months" ? "months" : axisUnit, period);
+    }
+
+    if (detailGrain === "day" && axisUnit === "years") {
       const year = Math.ceil(period / 365);
       const dayInYear = ((period - 1) % 365) + 1;
       const month = Math.min(12, Math.max(1, Math.ceil(dayInYear / 30.4167)));
       const day = Math.max(1, Math.round(dayInYear - (month - 1) * 30.4167));
       return `Day ${day} · M${month} · Year ${year}`;
     }
-    if (detailGrain === "quarter") {
+
+    if (detailGrain === "day") {
+      return periodNoun("days", period);
+    }
+
+    if (detailGrain === "quarter" && axisUnit === "years") {
       const year = Math.ceil(period / 4);
       const q = ((period - 1) % 4) + 1;
       return `Q${q} · Year ${year}`;
     }
-    if (detailGrain === "year") return `Year ${period}`;
+
+    if (detailGrain === "quarter") {
+      return periodNoun("quarters", period);
+    }
+
+    if (detailGrain === "year") {
+      return periodNoun("years", period);
+    }
+
     return `Period ${period}`;
+  }
+
+  /**
+   * Line-axis tick positions: integer boundaries (grid) + band midpoints (labels).
+   * Midpoints only for real periods — no phantom Year N+1 after the horizon.
+   * e.g. 10 years → labels at 0.5…9.5 (Year 1…Year 10), grid at 0…10.
+   */
+  function buildLineAxisTicks(axisCount) {
+    const max = Math.max(1, axisCount);
+    const mids = [];
+    if (max <= 20) {
+      for (let i = 0; i < max; i++) mids.push(i + 0.5);
+    } else {
+      const step = Math.ceil(max / 12);
+      for (let i = 0; i < max; i += step) mids.push(i + 0.5);
+      const last = max - 0.5;
+      if (Math.abs(mids[mids.length - 1] - last) > 1e-9) mids.push(last);
+    }
+    const boundaries = Array.from({ length: max + 1 }, (_, i) => i);
+    return [...new Set([...boundaries, ...mids])].sort((a, b) => a - b);
+  }
+
+  function isLineMidTick(value) {
+    return Math.abs(value - Math.floor(value) - 0.5) < 1e-9;
   }
 
   function buildGrowthPoints(result) {
@@ -128,13 +181,12 @@ const Charts = (() => {
         balance: r.balance,
         invested: r.invested,
         earnings: r.earnings,
-        hoverLabel: friendlyHoverLabel(period, detailGrain),
       };
     });
     return { points, axisUnit, axisCount, detailGrain };
   }
 
-  function aggregateBars(points, axisCount, axisUnit, detailGrain) {
+  function aggregateBars(points, axisCount, axisUnit) {
     const bars = [];
     for (let k = 0; k <= axisCount; k++) {
       let best = points[0];
@@ -145,17 +197,65 @@ const Charts = (() => {
       bars.push({
         ...best,
         x: k,
-        axisLabel: axisTickLabel(k, axisUnit),
-        hoverLabel: k === 0 ? "Start" : best.hoverLabel || friendlyHoverLabel(best.period, detailGrain),
+        axisLabel: barAxisLabel(k, axisUnit),
+        hoverLabel: barHoverLabel(k, axisUnit),
       });
     }
     return bars;
   }
 
+  function resolveGrowthType(result) {
+    if (!result.chartAllowsToggle) return "line";
+    if (growthTypeOverride === "bar" || growthTypeOverride === "line") {
+      return growthTypeOverride;
+    }
+    return result.chartPreference === "bar" ? "bar" : "line";
+  }
+
+  function updateGrowthToggleUi(result, activeType) {
+    const toggle = document.getElementById("chartTypeToggle");
+    const badge = document.getElementById("chartModeBadge");
+    const btnBar = document.getElementById("btn-chart-bar");
+    const btnLine = document.getElementById("btn-chart-line");
+    const allows = !!result.chartAllowsToggle;
+    const axisCount = result.chartMeta?.axisCount || getAxisMeta(result).axisCount;
+    const unit = result.chartMeta?.axisUnit || getAxisMeta(result).axisUnit;
+    const unitWord = unit === "years" ? "years"
+      : unit === "months" ? "months"
+      : unit === "quarters" ? "quarters"
+      : unit === "days" ? "days"
+      : "periods";
+
+    if (toggle) toggle.classList.toggle("d-none", !allows);
+    btnBar?.classList.toggle("active", activeType === "bar");
+    btnLine?.classList.toggle("active", activeType === "line");
+
+    if (badge) {
+      badge.textContent = activeType === "bar"
+        ? `Bars · ${axisCount} ${unitWord}`
+        : `Line · ${axisCount} ${unitWord}`;
+    }
+  }
+
+  function setGrowthType(type) {
+    if (!lastGrowthResult?.chartAllowsToggle) return;
+    if (type !== "bar" && type !== "line") return;
+    growthTypeOverride = type;
+    const canvas = document.getElementById("growthChart");
+    if (canvas && lastGrowthResult) renderGrowth(canvas, lastGrowthResult);
+  }
+
   function renderGrowth(canvas, result) {
     if (!canvas || !result) return;
 
-    const type = result.chartPreference === "bar" ? "bar" : "line";
+    if (lastGrowthResult !== result) {
+      growthTypeOverride = null;
+      lastGrowthResult = result;
+    }
+
+    const type = resolveGrowthType(result);
+    updateGrowthToggleUi(result, type);
+
     const currency = result.currency;
     const asset = result.asset;
     const built = buildGrowthPoints(result);
@@ -165,13 +265,18 @@ const Charts = (() => {
 
     const isBar = type === "bar";
     if (isBar) {
-      points = aggregateBars(points, axisCount, axisUnit, detailGrain);
+      points = aggregateBars(points, axisCount, axisUnit);
+    } else {
+      points = points.map((p) => ({
+        ...p,
+        hoverLabel: lineHoverLabel(p.period, detailGrain, axisUnit),
+      }));
     }
 
     if (growthChart) growthChart.destroy();
     hideGrowthTooltip();
 
-    const tickVals = buildAxisTicks(axisCount);
+    const tickVals = isBar ? null : buildLineAxisTicks(axisCount);
     const categoryLabels = isBar ? points.map((p) => p.axisLabel) : null;
 
     const lineDataset = (label, key, color) => ({
@@ -180,9 +285,9 @@ const Charts = (() => {
       borderColor: color,
       backgroundColor: color + "22",
       borderWidth: 2.5,
-      pointRadius: points.length > 60 ? 0 : 2.5,
+      pointRadius: 0,
       pointHoverRadius: 5,
-      pointHitRadius: 8,
+      pointHitRadius: 10,
       tension: 0.25,
       fill: true,
     });
@@ -193,7 +298,7 @@ const Charts = (() => {
       backgroundColor: color + "cc",
       borderColor: color,
       borderWidth: 0,
-      borderRadius: 4,
+      borderRadius: 0,
       maxBarThickness: axisCount <= 6 ? 36 : 22,
     });
 
@@ -241,7 +346,10 @@ const Charts = (() => {
                 return;
               }
               const p = points[idx];
-              const title = p.hoverLabel || axisTickLabel(Math.round(p.x), axisUnit);
+              const title = p.hoverLabel
+                || (isBar
+                  ? barHoverLabel(Math.round(p.x), axisUnit)
+                  : lineAxisLabel(p.x, axisUnit));
               const rowsHtml = (tooltip.dataPoints || []).map((dp) => {
                 const v = dp.parsed.y ?? dp.parsed;
                 const color = dp.dataset.borderColor || dp.dataset.backgroundColor || COLORS.text;
@@ -279,10 +387,18 @@ const Charts = (() => {
                   maxRotation: 0,
                   autoSkip: false,
                   callback(value) {
-                    return axisTickLabel(value, axisUnit);
+                    // Labels only at band centers; integers keep the grid clean.
+                    if (!isLineMidTick(value)) return "";
+                    return lineAxisLabel(value, axisUnit);
                   },
                 },
-                grid: { color: COLORS.grid },
+                grid: {
+                  color(ctx) {
+                    const v = ctx.tick?.value;
+                    if (v == null || isLineMidTick(v)) return "transparent";
+                    return COLORS.grid;
+                  },
+                },
               },
           y: {
             position: "right",
@@ -447,5 +563,5 @@ const Charts = (() => {
     return out;
   }
 
-  return { renderAll, destroyAll, formatMoney, getChartImages };
+  return { renderAll, destroyAll, formatMoney, getChartImages, setGrowthType };
 })();

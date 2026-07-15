@@ -91,9 +91,27 @@ const Calculations = (() => {
     return Math.max(0, amount * (1 + delta / 100));
   }
 
+  function contribEventsPerYear(contribFreq) {
+    switch (contribFreq) {
+      case "yearly":
+        return 1;
+      case "quarterly":
+        return 4;
+      case "monthly":
+      default:
+        return 12;
+    }
+  }
+
   /**
-   * Steps through contributions with optional step-up growth every year/quarter.
-   * `baseContribution` is the form value (per month/quarter/year).
+   * Contribution cash-flows on an event timeline (independent of compounding steps).
+   *
+   * Initial deposit is the t=0 transfer (this month / quarter / year).
+   * Additional contributions start on the *next* interval:
+   *   monthly → events at 1/12, 2/12, … years (first extra = next month)
+   * So end of year 1 with $100 start + $100/mo = $1,200 invested (11 extras), not $1,300.
+   *
+   * Half-open window [t0, t1) so a yearly boundary event lands in the following step.
    */
   function createContributionStepper({
     baseContribution = 0,
@@ -104,21 +122,43 @@ const Calculations = (() => {
     const g = normalizeGrowth(growth);
     let currentAmount = Number(baseContribution) || 0;
     let growthStep = 0;
-    const everySteps = !g
-      ? Infinity
-      : g.every === "quarter"
-        ? Math.max(1, Math.round(stepsPerYear / 4))
-        : Math.max(1, stepsPerYear);
+    const eventsPerYear = contribEventsPerYear(contribFreq);
+    const spy = Math.max(1, stepsPerYear);
+    const growthPerYear = !g ? 0 : g.every === "quarter" ? 4 : 1;
+    let nextGrowthBoundary = growthPerYear > 0 ? 1 / growthPerYear : Infinity;
+    // Event k (k=1,2,…) occurs at time k/eventsPerYear.
+    let nextEvent = 1;
 
     return {
       /** Call once per simulation period (1-based index). */
       next(periodIndex) {
-        if (g && periodIndex > 1 && (periodIndex - 1) % everySteps === 0) {
-          currentAmount = applyGrowthStep(currentAmount, g, growthStep++);
+        const t0 = (periodIndex - 1) / spy;
+        const t1 = periodIndex / spy;
+
+        if (g && growthPerYear > 0) {
+          while (nextGrowthBoundary < t1 - 1e-12) {
+            if (nextGrowthBoundary >= t0 - 1e-12) {
+              currentAmount = applyGrowthStep(currentAmount, g, growthStep++);
+            }
+            nextGrowthBoundary += 1 / growthPerYear;
+          }
         }
-        const pmt = contribPerPeriod(currentAmount, contribFreq, stepsPerYear);
-        const annualized = contribPerYear(currentAmount, contribFreq);
-        return { pmt, currentAmount, annualized };
+
+        let pmt = 0;
+        while (true) {
+          const et = nextEvent / eventsPerYear;
+          if (et >= t1 - 1e-12) break;
+          if (et >= t0 - 1e-12) {
+            pmt += currentAmount;
+          }
+          nextEvent += 1;
+        }
+
+        return {
+          pmt,
+          currentAmount,
+          annualized: currentAmount * eventsPerYear,
+        };
       },
     };
   }
@@ -324,13 +364,9 @@ const Calculations = (() => {
     for (let i = 1; i <= steps; i++) {
       const { pmt, currentAmount, annualized } = stepper.next(i);
       endingContribution = currentAmount;
-      // For daily mode, contribPerPeriod assumes stepsPerYear payments; convert annualized to step
-      const stepPmt = useDaily
-        ? (annualized / DAYS_YEAR) * daysPerStep
-        : pmt;
-      if (stepPmt > 0) {
-        balance += stepPmt;
-        invested += stepPmt;
+      if (pmt > 0) {
+        balance += pmt;
+        invested += pmt;
       }
       balance *= 1 + ratePerStep;
       rows.push({
@@ -417,10 +453,9 @@ const Calculations = (() => {
     for (let i = 1; i <= steps; i++) {
       const { pmt, currentAmount, annualized } = stepper.next(i);
       endingContribution = currentAmount;
-      const stepPmt = useDaily ? (annualized / DAYS_YEAR) * daysPerStep : pmt;
-      if (stepPmt > 0) {
-        balance += stepPmt;
-        invested += stepPmt;
+      if (pmt > 0) {
+        balance += pmt;
+        invested += pmt;
       }
       // Bonus on capped portion of earn balance (not including prior bonus cash)
       const bonusBase = Math.min(balance, bonusCap);
@@ -750,19 +785,26 @@ const Calculations = (() => {
     scenarios.best = runScenarioVariant(input, expected, bestRate).summary;
     scenarios.worst = runScenarioVariant(input, expected, worstRate).summary;
 
+    const chartMeta = buildChartMeta(input, years);
+    const axisCount = chartMeta.axisCount;
     return {
       rows: displayRows,
       fullRows: result.rows,
       summary: expected.summary,
       scenarios,
-      chartMeta: buildChartMeta(input, years),
-      chartPreference: pickChartType(years, displayRows.length),
+      chartMeta,
+      chartPreference: pickChartType(axisCount),
+      chartAllowsToggle: chartAllowsToggle(axisCount),
     };
   }
 
-  function pickChartType(years, pointCount) {
-    if (years <= 0.25 || pointCount <= 40) return "bar";
-    return "line";
+  /** 1–10 bars default; 11–30 line default; both allow toggle. 31+ line only. */
+  function pickChartType(axisCount) {
+    return axisCount <= 10 ? "bar" : "line";
+  }
+
+  function chartAllowsToggle(axisCount) {
+    return axisCount >= 1 && axisCount <= 30;
   }
 
   /**
@@ -835,11 +877,10 @@ const Calculations = (() => {
       let balance = Number(input.principal) || 0;
       let invested = balance;
       for (let i = 1; i <= steps; i++) {
-        const { pmt, annualized } = stepper.next(i);
-        const stepPmt = useDaily ? (annualized / DAYS_YEAR) * daysPerStep : pmt;
-        if (stepPmt > 0) {
-          balance += stepPmt;
-          invested += stepPmt;
+        const { pmt } = stepper.next(i);
+        if (pmt > 0) {
+          balance += pmt;
+          invested += pmt;
         }
         balance *= 1 + ratePerStep;
       }
@@ -941,11 +982,10 @@ const Calculations = (() => {
     let invested = principal;
     let bonusCash = 0;
     for (let i = 1; i <= steps; i++) {
-      const { pmt, annualized } = stepper.next(i);
-      const stepPmt = useDaily ? (annualized / DAYS_YEAR) * daysPerStep : pmt;
-      if (stepPmt > 0) {
-        balance += stepPmt;
-        invested += stepPmt;
+      const { pmt } = stepper.next(i);
+      if (pmt > 0) {
+        balance += pmt;
+        invested += pmt;
       }
       const bonusBase = Math.min(balance, bonusCap);
       bonusCash += bonusBase * (bonusApr / 100) * (daysPerStep / DAYS_YEAR);
