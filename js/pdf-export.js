@@ -1,6 +1,7 @@
 /**
  * Structured PDF export from calculation data (not page screenshots).
- * Uses jsPDF + autotable for clean pagination and the full period table.
+ * Mirrors the on-screen Results view: metrics, scenarios, live charts,
+ * period breakdown (selected Scale), and insights.
  */
 
 const PdfExport = (() => {
@@ -14,11 +15,17 @@ const PdfExport = (() => {
     return `${x.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
   }
 
-  async function exportResults(result) {
+  async function exportResults(result, options = {}) {
     if (!result || !window.jspdf) {
       alert("Nothing to export yet, or PDF libraries failed to load.");
       return;
     }
+    const tableGrain = options.tableGrain || "auto";
+    const metaLine = options.meta || "";
+    const metricCards = Array.isArray(options.metrics) ? options.metrics : null;
+    const insightItems = Array.isArray(options.insights) ? options.insights : [];
+    const growthBadge = options.growthBadge || "";
+    const chartScaleLabel = options.chartScaleLabel || "";
 
     const btn = document.getElementById("btn-export-pdf");
     const prev = btn ? btn.innerHTML : "";
@@ -43,6 +50,15 @@ const PdfExport = (() => {
         }
       };
 
+      const sectionTitle = (title) => {
+        ensureSpace(14);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12);
+        doc.setTextColor(28, 36, 32);
+        doc.text(title, margin, y);
+        y += 5;
+      };
+
       // Title block
       doc.setFont("helvetica", "bold");
       doc.setFontSize(18);
@@ -59,56 +75,30 @@ const PdfExport = (() => {
       doc.setFontSize(9);
       doc.setTextColor(110, 124, 116);
       const meta = [
-        result.title || "Investment",
-        result.asset && result.currency !== "$" ? result.asset : null,
-        result.days ? `${result.days} days` : null,
-        result.ratePct != null ? `Assumed rate ${pct(result.ratePct)}` : null,
+        metaLine || result.title || "Investment",
         `Exported ${new Date().toLocaleString()}`,
       ].filter(Boolean).join("  ·  ");
       const metaLines = doc.splitTextToSize(meta, contentWidth);
       doc.text(metaLines, margin, y);
       y += metaLines.length * 4.2 + 4;
 
-      // Key metrics
-      ensureSpace(28);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.setTextColor(28, 36, 32);
-      doc.text("Key metrics", margin, y);
-      y += 5;
-
+      // Key metrics — same cards as on screen
+      sectionTitle("Key metrics");
       const s = result.summary;
-      const metricRows = [
-        ["Total invested", money(s.totalInvested, result.currency, result.asset)],
-        ["Earnings", money(s.earnings, result.currency, result.asset)],
-        ["Final balance", money(s.finalBalance, result.currency, result.asset)],
-        ["Return on investment", pct(s.roi)],
-        ["Effective APY", pct(s.apy)],
-      ];
-
-      if (result.extras?.afterWithdraw != null) {
-        metricRows.push([
-          `After withdraw (fee ${pct(result.extras.withdrawFee)})`,
-          money(result.extras.afterWithdraw, result.currency, result.asset),
+      let metricRows;
+      if (metricCards?.length) {
+        metricRows = metricCards.map((m) => [
+          m.sub ? `${m.label} (${m.sub})` : m.label,
+          m.value,
         ]);
-      }
-      if (result.extras?.bonusEarnings != null) {
-        metricRows.push([
-          "Bonus rewards (non-compounded)",
-          money(result.extras.bonusEarnings, result.currency, result.asset),
-        ]);
-      }
-      if (s.selfFund) {
-        metricRows.push([
-          "Self-funding from",
-          `${s.selfFund.label} (earnings cover deposits)`,
-        ]);
-      }
-      if (s.contribGrowthEnabled && s.endingContribution != null) {
-        metricRows.push([
-          "Ending contribution",
-          money(s.endingContribution, result.currency, result.asset),
-        ]);
+      } else {
+        metricRows = [
+          ["Total invested", money(s.totalInvested, result.currency, result.asset)],
+          ["Earnings", money(s.earnings, result.currency, result.asset)],
+          ["Final balance", money(s.finalBalance, result.currency, result.asset)],
+          ["Return on investment", pct(s.roi)],
+          ["Effective APY", pct(s.apy)],
+        ];
       }
 
       doc.autoTable({
@@ -123,14 +113,8 @@ const PdfExport = (() => {
       });
       y = doc.lastAutoTable.finalY + 8;
 
-      // Scenarios
-      ensureSpace(36);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.setTextColor(28, 36, 32);
-      doc.text("Scenario comparison", margin, y);
-      y += 5;
-
+      // Scenario comparison (cards → table)
+      sectionTitle("Scenario comparison");
       const sc = result.scenarios;
       const expectedBal = sc.expected.finalBalance;
       doc.autoTable({
@@ -139,21 +123,21 @@ const PdfExport = (() => {
         head: [["Scenario", "Final balance", "Earnings", "ROI", "vs Expected"]],
         body: [
           [
-            "Expected",
+            "Expected case",
             money(sc.expected.finalBalance, result.currency, result.asset),
             money(sc.expected.earnings, result.currency, result.asset),
             pct(sc.expected.roi),
-            "Baseline",
+            `Baseline @ ${pct(result.ratePct)}`,
           ],
           [
-            "Best (+20% rate)",
+            "Best case (+20% rate)",
             money(sc.best.finalBalance, result.currency, result.asset),
             money(sc.best.earnings, result.currency, result.asset),
             pct(sc.best.roi),
             money(sc.best.finalBalance - expectedBal, result.currency, result.asset),
           ],
           [
-            "Worst (−20% rate)",
+            "Worst case (−20% rate)",
             money(sc.worst.finalBalance, result.currency, result.asset),
             money(sc.worst.earnings, result.currency, result.asset),
             pct(sc.worst.roi),
@@ -172,65 +156,56 @@ const PdfExport = (() => {
       });
       y = doc.lastAutoTable.finalY + 8;
 
-      // Charts as images (vector-ish PNG from Chart.js, not HTML screenshot)
+      // Live Chart.js images (growth uses current type + Scale)
       const images = typeof Charts.getChartImages === "function" ? Charts.getChartImages() : {};
+
       if (images.growth) {
-        ensureSpace(78);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
-        doc.text("Growth over time", margin, y);
-        y += 3;
+        const growthTitle = chartScaleLabel
+          ? `Growth over time (${chartScaleLabel}${growthBadge ? ` · ${growthBadge}` : ""})`
+          : (growthBadge ? `Growth over time (${growthBadge})` : "Growth over time");
+        sectionTitle(growthTitle);
+        y -= 2;
+        ensureSpace(66);
         const imgH = 62;
         doc.addImage(images.growth, "PNG", margin, y, contentWidth, imgH);
         y += imgH + 8;
       }
 
-      if (images.composition || images.scenario) {
-        ensureSpace(72);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
-        doc.text("Composition & scenarios", margin, y);
+      if (images.composition) {
+        sectionTitle("Where the final balance comes from");
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(110, 124, 116);
+        doc.text("Share of capital you put in vs. growth earned.", margin, y);
         y += 3;
-        const half = (contentWidth - 4) / 2;
+        ensureSpace(60);
         const imgH = 55;
-        if (images.composition) {
-          doc.addImage(images.composition, "PNG", margin, y, half, imgH);
-        }
-        if (images.scenario) {
-          doc.addImage(images.scenario, "PNG", margin + half + 4, y, half, imgH);
-        }
+        doc.addImage(images.composition, "PNG", margin, y, contentWidth * 0.72, imgH);
         y += imgH + 8;
       }
 
-      // Notes / insights
-      if (result.notes?.length) {
-        ensureSpace(20);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
-        doc.setTextColor(28, 36, 32);
-        doc.text("Model notes", margin, y);
-        y += 5;
+      if (images.scenario) {
+        sectionTitle("Scenario outcomes");
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
-        doc.setTextColor(74, 87, 80);
-        result.notes.forEach((note) => {
-          const lines = doc.splitTextToSize(`• ${note}`, contentWidth);
-          ensureSpace(lines.length * 4.2 + 2);
-          doc.text(lines, margin, y);
-          y += lines.length * 4.2 + 1.5;
-        });
-        y += 4;
+        doc.setFontSize(8.5);
+        doc.setTextColor(110, 124, 116);
+        doc.text("Final balances under Expected, Best, and Worst rates.", margin, y);
+        y += 3;
+        ensureSpace(60);
+        const imgH = 55;
+        doc.addImage(images.scenario, "PNG", margin, y, contentWidth * 0.72, imgH);
+        y += imgH + 8;
       }
 
-      // Full period table
-      ensureSpace(30);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.setTextColor(28, 36, 32);
-      doc.text("Period breakdown (all entries)", margin, y);
-      y += 4;
+      // Period table at the same Scale as the on-screen breakdown
+      const grainOpt = (result.tableMeta?.grains || []).find((g) => g.id === tableGrain);
+      const grainLabel = grainOpt?.label || "Auto";
+      sectionTitle(`Period breakdown (${grainLabel})`);
+      y -= 1;
 
-      const rows = result.fullRows?.length ? result.fullRows : (result.rows || []);
+      const rows = typeof Calculations?.rowsForTableGrain === "function"
+        ? Calculations.rowsForTableGrain(result, tableGrain)
+        : (result.rows || []);
       const body = rows.map((r) => [
         r.label,
         money(r.invested, result.currency, result.asset),
@@ -252,19 +227,24 @@ const PdfExport = (() => {
           2: { halign: "right" },
           3: { halign: "right" },
         },
-        didDrawPage: (data) => {
-          doc.setFontSize(8);
-          doc.setTextColor(110, 124, 116);
-          doc.text(
-            `YieldLens · Branko Pereira · page ${data.pageNumber}`,
-            pageWidth / 2,
-            pageHeight - 6,
-            { align: "center" }
-          );
-        },
       });
+      y = doc.lastAutoTable.finalY + 8;
 
-      // Fill in total page counts now that the document is complete.
+      // Insights for this run (same recommendations as Results)
+      if (insightItems.length) {
+        sectionTitle("Insights for this run");
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(74, 87, 80);
+        insightItems.forEach((note) => {
+          const lines = doc.splitTextToSize(`• ${note}`, contentWidth);
+          ensureSpace(lines.length * 4.2 + 2);
+          doc.text(lines, margin, y);
+          y += lines.length * 4.2 + 1.5;
+        });
+      }
+
+      // Footer on every page
       const pageCount = doc.getNumberOfPages();
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);

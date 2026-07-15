@@ -7,6 +7,7 @@
     lastResult: null,
     tablePage: 1,
     pageSize: 10,
+    tableGrain: "auto",
     activeView: "guide", // "guide" | "results"
   };
 
@@ -109,7 +110,22 @@
     bindChartTypeToggle();
     updateViewChrome();
     document.getElementById("btn-export-pdf")?.addEventListener("click", () => {
-      if (state.lastResult) PdfExport.exportResults(state.lastResult);
+      if (!state.lastResult) return;
+      const money = (n) => Charts.formatMoney(n, state.lastResult.currency, state.lastResult.asset);
+      const chartGrainSel = document.getElementById("chartGrainSelect");
+      const chartGrainOpt = chartGrainSel?.selectedOptions?.[0];
+      PdfExport.exportResults(state.lastResult, {
+        tableGrain: state.tableGrain,
+        meta: buildMeta(state.lastResult),
+        metrics: buildMetricCards(state.lastResult, money).map((m) => ({
+          label: m.label,
+          value: m.value,
+          sub: m.sub || null,
+        })),
+        insights: buildInsightItems(state.lastResult).map(stripHtml),
+        growthBadge: document.getElementById("chartModeBadge")?.textContent || "",
+        chartScaleLabel: chartGrainOpt?.textContent || "",
+      });
     });
   });
 
@@ -335,6 +351,7 @@
       result.input = input;
       state.lastResult = result;
       state.tablePage = 1;
+      state.tableGrain = "auto";
       renderResults(result);
       setView("results");
       const panel = document.getElementById("resultsPanel");
@@ -436,6 +453,29 @@
       state.tablePage = 1;
       if (state.lastResult) renderTable(state.lastResult);
     });
+    document.getElementById("tableGrainSelect")?.addEventListener("change", (e) => {
+      state.tableGrain = e.target.value || "auto";
+      state.tablePage = 1;
+      if (state.lastResult) renderTable(state.lastResult);
+    });
+  }
+
+  function updateTableGrainSelect(result) {
+    const wrap = document.getElementById("tableGrainWrap");
+    const select = document.getElementById("tableGrainSelect");
+    const grains = result.tableMeta?.grains || [];
+    const show = !!result.tableMeta?.allowsGrainSelect && grains.length > 1;
+    if (wrap) wrap.classList.toggle("d-none", !show);
+    if (!select || !show) return;
+
+    const current = grains.some((g) => g.id === state.tableGrain)
+      ? state.tableGrain
+      : "auto";
+    state.tableGrain = current;
+    select.innerHTML = grains.map((g) =>
+      `<option value="${escapeHtml(g.id)}">${escapeHtml(g.label)}</option>`
+    ).join("");
+    select.value = current;
   }
 
   function renderResults(result) {
@@ -636,7 +676,8 @@
   }
 
   function renderTable(result) {
-    const rows = result.rows || [];
+    updateTableGrainSelect(result);
+    const rows = Calculations.rowsForTableGrain(result, state.tableGrain);
     const tbody = document.getElementById("resultsTableBody");
     const pager = document.getElementById("tablePager");
     const money = (n) => Charts.formatMoney(n, result.currency, result.asset);
@@ -675,9 +716,7 @@
     });
   }
 
-  function renderInsights(result) {
-    const block = document.getElementById("insightsBlock");
-    if (!block) return;
+  function buildInsightItems(result) {
     const s = result.summary;
     const money = (n) => Charts.formatMoney(n, result.currency, result.asset);
     const items = [];
@@ -705,12 +744,26 @@
       result.notes.slice(0, 2).forEach((n) => items.push(n));
     }
 
-    // Rule of 72 approx on rate
     if (result.ratePct > 0 && result.years >= 1) {
       const doubleYears = 72 / result.ratePct;
       items.push(`Rule of 72: money roughly doubles every <strong>${doubleYears.toFixed(1)} years</strong> at ${fmtPct(result.ratePct)} (ignoring contributions).`);
     }
 
+    return items;
+  }
+
+  function stripHtml(html) {
+    return String(html || "")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]+>/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function renderInsights(result) {
+    const block = document.getElementById("insightsBlock");
+    if (!block) return;
+    const items = buildInsightItems(result);
     block.innerHTML = `
       <h3><i class="fa-solid fa-compass me-2"></i>Insights for this run</h3>
       <ul class="insight-list">

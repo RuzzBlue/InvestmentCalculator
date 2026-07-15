@@ -345,6 +345,7 @@ const Calculations = (() => {
 
     // Display-friendly schedule: for daily over long spans, sample monthly
     const displayRows = downsampleRows(result.rows, n, years);
+    const displayUnit = n >= 300 ? (years > 2 ? "month" : "day") : n === 12 ? "month" : n === 4 ? "quarter" : "year";
     return {
       type: "investment",
       title: "Investment",
@@ -353,8 +354,8 @@ const Calculations = (() => {
       ratePct: rate,
       compoundsPerYear: n,
       years,
-      displayUnit: n >= 300 ? (years > 2 ? "month" : "day") : n === 12 ? "month" : n === 4 ? "quarter" : "year",
-      ...finalize(result, displayRows, rate, n, years, input),
+      displayUnit,
+      ...finalize(result, displayRows, rate, n, years, input, { displayUnit }),
     };
   }
 
@@ -463,7 +464,7 @@ const Calculations = (() => {
         // Scenarios must scale the engineered APR, not re-read a raw APY quote.
         apr,
         rateQuote: "apr",
-      }),
+      }, { displayUnit: useDaily ? "day" : "month" }),
     };
   }
 
@@ -571,7 +572,9 @@ const Calculations = (() => {
         regularEarnings,
         bonusEarnings: final.bonusCash,
       },
-      ...finalize(base, rows, effApr, DAYS_YEAR, years, input),
+      ...finalize(base, rows, effApr, DAYS_YEAR, years, input, {
+        displayUnit: useDaily ? "day" : "month",
+      }),
     };
   }
 
@@ -624,7 +627,7 @@ const Calculations = (() => {
         "No compounding during the lock. Reinvest at maturity for a new term if desired.",
         "Additional contributions are ignored for fixed-term products (typical exchange behavior).",
       ],
-      ...finalize(base, rows, apr, 1, years, input),
+      ...finalize(base, rows, apr, 1, years, input, { displayUnit: "term" }),
     };
   }
 
@@ -753,7 +756,9 @@ const Calculations = (() => {
         cashDividends: final.cashDividends,
         reinvest,
       },
-      ...finalize(base, displayRows, effectiveRate, 12, years, input),
+      ...finalize(base, displayRows, effectiveRate, 12, years, input, {
+        displayUnit: months > 120 ? "year" : "month",
+      }),
     };
   }
 
@@ -782,7 +787,9 @@ const Calculations = (() => {
       years,
       displayUnit: months > 120 ? "year" : "month",
       notes: ["Simple mode compounds your assumed annual return monthly with contributions."],
-      ...finalize(result, displayRows, annualReturn, 12, years, input),
+      ...finalize(result, displayRows, annualReturn, 12, years, input, {
+        displayUnit: months > 120 ? "year" : "month",
+      }),
     };
   }
 
@@ -911,7 +918,218 @@ const Calculations = (() => {
     };
   }
 
-  function finalize(result, displayRows, ratePct, compoundsPerYear, years, input) {
+  const TABLE_GRAIN_RANK = { day: 0, month: 1, quarter: 2, year: 3 };
+
+  function getSimGrain({ compoundsPerYear, years, displayUnit, rows }) {
+    // Prefer engine step over displayUnit (display may already be downsampled).
+    if (displayUnit === "term") return "year";
+
+    const n = Number(compoundsPerYear) || 1;
+    if (n >= 300) {
+      const maxP = Number(rows?.[rows.length - 1]?.period) || 0;
+      const dayHorizon = Math.max(1, Math.round((Number(years) || 0) * DAYS_YEAR));
+      // Crypto long flexible: APR daily but stepped monthly → far fewer periods than calendar days
+      if (maxP > 0 && dayHorizon > 90 && maxP <= Math.ceil(dayHorizon / 20)) return "month";
+      return "day";
+    }
+    if (n === 12) return "month";
+    if (n === 4) return "quarter";
+    if (n === 1) return "year";
+
+    const unit = displayUnit || "";
+    if (unit === "day" || unit === "days") return "day";
+    if (unit === "month" || unit === "months") return "month";
+    if (unit === "quarter" || unit === "quarters") return "quarter";
+    return "year";
+  }
+
+  function horizonDaysFrom(years, rows, simGrain) {
+    if (Number(years) > 0) return Math.max(1, Math.round(Number(years) * DAYS_YEAR));
+    const maxP = Number(rows?.[rows.length - 1]?.period) || 0;
+    if (simGrain === "day") return Math.max(1, maxP);
+    if (simGrain === "month") return Math.max(1, Math.round(maxP * 30.4167));
+    if (simGrain === "quarter") return Math.max(1, Math.round(maxP * 91.25));
+    return Math.max(1, Math.round(maxP * DAYS_YEAR));
+  }
+
+  function pickAutoTableGrain(simGrain, years, days) {
+    const y = Number(years) || days / DAYS_YEAR;
+    if (simGrain === "day") {
+      // Up to 1 year of daily steps stays readable; beyond that, collapse.
+      if (days <= 365) return "day";
+      if (y <= 2) return "month";
+      return "year";
+    }
+    if (simGrain === "month") {
+      if (y <= 2) return "month";
+      return "year";
+    }
+    if (simGrain === "quarter") return "quarter";
+    return "year";
+  }
+
+  function grainSelectLabel(grain) {
+    switch (grain) {
+      case "day": return "Days";
+      case "month": return "Months";
+      case "quarter": return "Quarters";
+      case "year": return "Years";
+      default: return grain;
+    }
+  }
+
+  function buildTableMeta({ simGrain, years, rows }) {
+    const days = horizonDaysFrom(years, rows, simGrain);
+    const monthsEst = Math.max(1, Math.round(days / 30.4167));
+    const quartersEst = Math.max(1, Math.round(days / 91.25));
+    const yearsEst = Math.max(1, Math.round(days / DAYS_YEAR));
+    const autoGrain = pickAutoTableGrain(simGrain, years, days);
+    const simRank = TABLE_GRAIN_RANK[simGrain] ?? 3;
+
+    const allowed = [];
+    const consider = ["day", "month", "quarter", "year"];
+    for (const g of consider) {
+      if ((TABLE_GRAIN_RANK[g] ?? 99) < simRank) continue;
+      if (g === "day" && (simGrain !== "day" || days > 365)) continue;
+      if (g === "month" && (days < 28 || monthsEst > 120)) continue;
+      if (g === "quarter" && (days < 90 || quartersEst > 80)) continue;
+      if (g === "year" && days < 180) continue;
+      allowed.push(g);
+    }
+
+    if (!allowed.includes(simGrain)) allowed.unshift(simGrain);
+    if (!allowed.includes(autoGrain)) allowed.unshift(autoGrain);
+
+    const unique = [...new Set(allowed)];
+    unique.sort((a, b) => (TABLE_GRAIN_RANK[a] ?? 0) - (TABLE_GRAIN_RANK[b] ?? 0));
+
+    const grains = [
+      { id: "auto", grain: autoGrain, label: `Auto · ${grainSelectLabel(autoGrain)}` },
+      ...unique.map((g) => ({ id: g, grain: g, label: grainSelectLabel(g) })),
+    ];
+
+    return {
+      simGrain,
+      autoGrain,
+      grains,
+      allowsGrainSelect: unique.length > 1,
+    };
+  }
+
+  function periodStepForGrain(simGrain, targetGrain) {
+    const map = {
+      day: { day: 1, month: 30, quarter: 91, year: 365 },
+      month: { month: 1, quarter: 3, year: 12 },
+      quarter: { quarter: 1, year: 4 },
+      year: { year: 1 },
+    };
+    return map[simGrain]?.[targetGrain] || 1;
+  }
+
+  function labelForAggregatedPeriod(period, targetGrain, simGrain) {
+    if (!(period > 0)) return "Start";
+    if (targetGrain === "day") return `Day ${period}`;
+
+    if (simGrain === "day") {
+      if (targetGrain === "month") {
+        return `Month ${Math.max(1, Math.round(period / 30.4167))}`;
+      }
+      if (targetGrain === "quarter") {
+        return `Quarter ${Math.max(1, Math.round(period / 91.25))}`;
+      }
+      if (targetGrain === "year") {
+        return `Year ${Math.max(1, Math.round(period / DAYS_YEAR))}`;
+      }
+    }
+
+    if (simGrain === "month") {
+      if (targetGrain === "month") {
+        const month = ((period - 1) % 12) + 1;
+        const year = Math.ceil(period / 12);
+        return `M${month} Y${year}`;
+      }
+      if (targetGrain === "quarter") {
+        const qIndex = Math.ceil(period / 3);
+        const year = Math.ceil(qIndex / 4);
+        const q = ((qIndex - 1) % 4) + 1;
+        return `Q${q} Y${year}`;
+      }
+      if (targetGrain === "year") {
+        return `Year ${Math.round(period / 12)}`;
+      }
+    }
+
+    if (simGrain === "quarter") {
+      if (targetGrain === "quarter") {
+        const year = Math.ceil(period / 4);
+        const q = ((period - 1) % 4) + 1;
+        return `Q${q} Y${year}`;
+      }
+      if (targetGrain === "year") {
+        return `Year ${Math.round(period / 4)}`;
+      }
+    }
+
+    return `Year ${period}`;
+  }
+
+  /**
+   * Aggregate fullRows up to a coarser grain (never invent finer steps).
+   * Keeps Start (period 0) and end-of-bucket snapshots.
+   */
+  function aggregateRowsForGrain(fullRows, grain, simGrain) {
+    const rows = fullRows || [];
+    if (!rows.length) return [];
+    const target = ["day", "month", "quarter", "year"].includes(grain) ? grain : simGrain;
+
+    if ((TABLE_GRAIN_RANK[target] ?? 99) < (TABLE_GRAIN_RANK[simGrain] ?? 0)) {
+      return aggregateRowsForGrain(rows, simGrain, simGrain);
+    }
+
+    if (target === simGrain) {
+      return rows.map((r) => {
+        const label = String(r.label || "");
+        // Keep custom maturity / term labels
+        if (label.startsWith("Maturity") || label.includes("Maturity")) return { ...r };
+        return {
+          ...r,
+          label: labelForAggregatedPeriod(Number(r.period) || 0, target, simGrain),
+        };
+      });
+    }
+
+    const step = periodStepForGrain(simGrain, target);
+    const out = [];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const p = Number(r.period) || 0;
+      const isLast = i === rows.length - 1;
+      if (p === 0 || (p > 0 && p % step === 0) || isLast) {
+        if (isLast && out.length && Number(out[out.length - 1].period) === p) continue;
+        out.push({
+          ...r,
+          label: labelForAggregatedPeriod(p, target, simGrain),
+        });
+      }
+    }
+    return out;
+  }
+
+  function resolveTableGrainId(tableMeta, grainId) {
+    const id = grainId || "auto";
+    const opt = (tableMeta?.grains || []).find((g) => g.id === id);
+    if (opt) return opt.grain;
+    return tableMeta?.autoGrain || tableMeta?.simGrain || "year";
+  }
+
+  function rowsForTableGrain(result, grainId) {
+    const full = result.fullRows?.length ? result.fullRows : (result.rows || []);
+    const simGrain = result.simGrain || result.tableMeta?.simGrain || "year";
+    const resolved = resolveTableGrainId(result.tableMeta, grainId || "auto");
+    return aggregateRowsForGrain(full, resolved, simGrain);
+  }
+
+  function finalize(result, displayRows, ratePct, compoundsPerYear, years, input, extras = {}) {
     const expected = result;
     const bestRate = ratePct * 1.2;
     const worstRate = Math.max(0, ratePct * 0.8);
@@ -928,9 +1146,22 @@ const Calculations = (() => {
 
     const chartMeta = buildChartMeta(input, years);
     const axisCount = chartMeta.axisCount;
+    const fullRows = result.rows;
+    const displayUnit = extras.displayUnit;
+    const simGrain = getSimGrain({
+      compoundsPerYear,
+      years,
+      displayUnit,
+      rows: fullRows,
+    });
+    const tableMeta = buildTableMeta({ simGrain, years, rows: fullRows });
+    const autoRows = aggregateRowsForGrain(fullRows, tableMeta.autoGrain, simGrain);
+
     return {
-      rows: displayRows,
-      fullRows: result.rows,
+      rows: autoRows,
+      fullRows,
+      simGrain,
+      tableMeta,
       summary: expected.summary,
       scenarios,
       chartMeta,
@@ -1185,5 +1416,8 @@ const Calculations = (() => {
     contribPerYear,
     formatNum,
     clamp,
+    aggregateRowsForGrain,
+    rowsForTableGrain,
+    resolveTableGrainId,
   };
 })();
