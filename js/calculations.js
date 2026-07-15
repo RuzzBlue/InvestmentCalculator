@@ -711,6 +711,30 @@ const Calculations = (() => {
     });
   }
 
+  function buildChartMeta(input, years) {
+    if (input?._source === "investment") {
+      return {
+        axisUnit: "years",
+        axisCount: Math.max(1, Math.round(Number(input.years) || years || 1)),
+      };
+    }
+    if (input?._source === "crypto" && input.cryType === "fixed_term") {
+      const days = input.fixedTerm === "custom"
+        ? Math.max(1, Number(input.customDays) || 1)
+        : Math.max(1, Number(input.fixedTerm) || 30);
+      return { axisUnit: "days", axisCount: days };
+    }
+    if (input?._source === "crypto" || input?._source === "etf") {
+      const unit = input.periodUnit || "years";
+      const count = Math.max(1, Math.round(Number(input.period) || 1));
+      return { axisUnit: unit, axisCount: count };
+    }
+    return {
+      axisUnit: "years",
+      axisCount: Math.max(1, Math.round(years || 1)),
+    };
+  }
+
   function finalize(result, displayRows, ratePct, compoundsPerYear, years, input) {
     const expected = result;
     const bestRate = ratePct * 1.2;
@@ -731,6 +755,7 @@ const Calculations = (() => {
       fullRows: result.rows,
       summary: expected.summary,
       scenarios,
+      chartMeta: buildChartMeta(input, years),
       chartPreference: pickChartType(years, displayRows.length),
     };
   }
