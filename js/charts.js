@@ -561,7 +561,7 @@ const Charts = (() => {
     scenarioChart = new Chart(canvas, {
       type: "bar",
       data: {
-        labels: ["Expected", "Best (+20%)", "Worst (−20%)"],
+        labels: ["Expected", "Best (+20%)", "Worst (-20%)"],
         datasets: [
           {
             label: "Final balance",

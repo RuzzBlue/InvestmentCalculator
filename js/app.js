@@ -515,7 +515,7 @@
       },
       {
         cls: "worst",
-        label: "Worst case (−20% rate)",
+        label: "Worst case (-20% rate)",
         s: sc.worst,
         delta: `<span class="scenario-delta down"><i class="fa-solid fa-arrow-down me-1"></i>vs Expected ${money(worstDelta)}</span>`,
       },
@@ -593,7 +593,7 @@
       push({
         label: "Cash dividends",
         value: money(result.extras.cashDividends),
-        sub: "Taken as cash (not DRIP’d)",
+        sub: "Taken as cash (not DRIPed)",
       });
     } else if (
       result.subtype === "advanced" &&
@@ -605,14 +605,14 @@
       push({
         label: "Est. annual dividends",
         value: money(estDiv),
-        sub: `At final balance × ${fmtPct(s.dividendYield)} yield`,
+        sub: `At final balance x ${fmtPct(s.dividendYield)} yield`,
       });
     }
 
     if (s.selfFund) {
       push({
         label: "Self-funding from",
-        value: String(s.selfFund.label || "—"),
+        value: String(s.selfFund.label || "-"),
         sub: "Earnings alone cover ongoing deposits",
       });
     }
@@ -637,7 +637,7 @@
       push({
         label: "CAGR (on invested)",
         value: fmtPct(s.cagr),
-        sub: "Annualized: contributions → final",
+        sub: "Annualized: contributions to final",
       });
     }
 
@@ -662,7 +662,7 @@
       push({
         label: "Worst-case balance",
         value: money(sc.worst.finalBalance),
-        sub: "−20% rate scenario",
+        sub: "-20% rate scenario",
       });
     }
 
@@ -725,7 +725,7 @@
     items.push(`Earnings make up <strong>${earningsShare.toFixed(1)}%</strong> of the final balance; the rest is capital you put in.`);
 
     if (s.apy != null && result.compoundsPerYear > 1) {
-      items.push(`Quoted rate ${fmtPct(result.ratePct)} compounds ~${result.compoundsPerYear}×/year → effective APY about <strong>${fmtPct(s.apy)}</strong>.`);
+      items.push(`Quoted rate ${fmtPct(result.ratePct)} compounds ~${result.compoundsPerYear}x/year to effective APY about <strong>${fmtPct(s.apy)}</strong>.`);
     }
 
     if (result.subtype === "simple_earn" && result.extras) {
@@ -784,7 +784,7 @@
 
   function fmtPct(n) {
     const x = Number(n);
-    if (!Number.isFinite(x)) return "—";
+    if (!Number.isFinite(x)) return "-";
     return `${x.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
   }
 

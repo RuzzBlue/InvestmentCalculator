@@ -11,8 +11,32 @@ const PdfExport = (() => {
 
   function pct(n) {
     const x = Number(n);
-    if (!Number.isFinite(x)) return "—";
+    if (!Number.isFinite(x)) return "-";
     return `${x.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+  }
+
+  /** Helvetica (jsPDF default) lacks many Unicode glyphs — keep PDF text ASCII-safe. */
+  function pdfSafe(text) {
+    return String(text ?? "")
+      .replace(/\u2192/g, " to ") // →
+      .replace(/\u00D7/g, "x") // ×
+      .replace(/\u2212/g, "-") // −
+      .replace(/[\u2013\u2014]/g, "-") // – —
+      .replace(/[\u2018\u2019]/g, "'") // ‘ ’
+      .replace(/[\u201C\u201D]/g, '"') // “ ”
+      .replace(/\u00B1/g, "+/-") // ±
+      .replace(/\u2026/g, "...") // …
+      .replace(/\u00B7/g, "|") // ·
+      .replace(/\u2022/g, "-") // •
+      .replace(/\s+to\s+/g, " to ")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+
+  function pdfSafeRows(rows) {
+    return (rows || []).map((row) =>
+      Array.isArray(row) ? row.map((cell) => pdfSafe(cell)) : pdfSafe(row)
+    );
   }
 
   async function exportResults(result, options = {}) {
@@ -55,7 +79,7 @@ const PdfExport = (() => {
         doc.setFont("helvetica", "bold");
         doc.setFontSize(12);
         doc.setTextColor(28, 36, 32);
-        doc.text(title, margin, y);
+        doc.text(pdfSafe(title), margin, y);
         y += 5;
       };
 
@@ -74,10 +98,10 @@ const PdfExport = (() => {
 
       doc.setFontSize(9);
       doc.setTextColor(110, 124, 116);
-      const meta = [
+      const meta = pdfSafe([
         metaLine || result.title || "Investment",
         `Exported ${new Date().toLocaleString()}`,
-      ].filter(Boolean).join("  ·  ");
+      ].filter(Boolean).join("  |  "));
       const metaLines = doc.splitTextToSize(meta, contentWidth);
       doc.text(metaLines, margin, y);
       y += metaLines.length * 4.2 + 4;
@@ -105,7 +129,7 @@ const PdfExport = (() => {
         startY: y,
         margin: { left: margin, right: margin },
         head: [["Metric", "Value"]],
-        body: metricRows,
+        body: pdfSafeRows(metricRows),
         theme: "grid",
         styles: { fontSize: 9, cellPadding: 2.2, textColor: [28, 36, 32] },
         headStyles: { fillColor: [15, 107, 76], textColor: 255, fontStyle: "bold" },
@@ -121,7 +145,7 @@ const PdfExport = (() => {
         startY: y,
         margin: { left: margin, right: margin },
         head: [["Scenario", "Final balance", "Earnings", "ROI", "vs Expected"]],
-        body: [
+        body: pdfSafeRows([
           [
             "Expected case",
             money(sc.expected.finalBalance, result.currency, result.asset),
@@ -137,13 +161,13 @@ const PdfExport = (() => {
             money(sc.best.finalBalance - expectedBal, result.currency, result.asset),
           ],
           [
-            "Worst case (−20% rate)",
+            "Worst case (-20% rate)",
             money(sc.worst.finalBalance, result.currency, result.asset),
             money(sc.worst.earnings, result.currency, result.asset),
             pct(sc.worst.roi),
             money(sc.worst.finalBalance - expectedBal, result.currency, result.asset),
           ],
-        ],
+        ]),
         theme: "grid",
         styles: { fontSize: 8.5, cellPadding: 2 },
         headStyles: { fillColor: [74, 87, 80], textColor: 255, fontStyle: "bold" },
@@ -161,7 +185,7 @@ const PdfExport = (() => {
 
       if (images.growth) {
         const growthTitle = chartScaleLabel
-          ? `Growth over time (${chartScaleLabel}${growthBadge ? ` · ${growthBadge}` : ""})`
+          ? `Growth over time (${chartScaleLabel}${growthBadge ? ` | ${growthBadge}` : ""})`
           : (growthBadge ? `Growth over time (${growthBadge})` : "Growth over time");
         sectionTitle(growthTitle);
         y -= 2;
@@ -206,12 +230,12 @@ const PdfExport = (() => {
       const rows = typeof Calculations?.rowsForTableGrain === "function"
         ? Calculations.rowsForTableGrain(result, tableGrain)
         : (result.rows || []);
-      const body = rows.map((r) => [
+      const body = pdfSafeRows(rows.map((r) => [
         r.label,
         money(r.invested, result.currency, result.asset),
         money(r.earnings, result.currency, result.asset),
         money(r.balance, result.currency, result.asset),
-      ]);
+      ]));
 
       doc.autoTable({
         startY: y,
@@ -237,7 +261,7 @@ const PdfExport = (() => {
         doc.setFontSize(9);
         doc.setTextColor(74, 87, 80);
         insightItems.forEach((note) => {
-          const lines = doc.splitTextToSize(`• ${note}`, contentWidth);
+          const lines = doc.splitTextToSize(pdfSafe(`- ${note}`), contentWidth);
           ensureSpace(lines.length * 4.2 + 2);
           doc.text(lines, margin, y);
           y += lines.length * 4.2 + 1.5;
@@ -253,7 +277,7 @@ const PdfExport = (() => {
         doc.setFillColor(255, 253, 248);
         doc.rect(margin, pageHeight - 10, contentWidth, 6, "F");
         doc.text(
-          `YieldLens · Branko Pereira · page ${i} of ${pageCount}`,
+          pdfSafe(`YieldLens | Branko Pereira | page ${i} of ${pageCount}`),
           pageWidth / 2,
           pageHeight - 6,
           { align: "center" }
