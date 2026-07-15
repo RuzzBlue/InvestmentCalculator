@@ -108,6 +108,7 @@
     bindContributionGrowth();
     bindContribTiming();
     bindChartTypeToggle();
+    bindLearnAprApyConverter();
     updateViewChrome();
     document.getElementById("btn-export-pdf")?.addEventListener("click", () => {
       if (!state.lastResult) return;
@@ -139,6 +140,59 @@
     document.getElementById("chartGrainSelect")?.addEventListener("change", (e) => {
       Charts.setChartGrain(e.target.value);
     });
+  }
+
+  function bindLearnAprApyConverter() {
+    const dirEl = document.getElementById("learn-rate-dir");
+    const valueEl = document.getElementById("learn-rate-value");
+    const nEl = document.getElementById("learn-rate-n");
+    const valueLabel = document.getElementById("learn-rate-value-label");
+    const outLabel = document.getElementById("learn-rate-out-label");
+    const outEl = document.getElementById("learn-rate-out");
+    const hintEl = document.getElementById("learn-rate-hint");
+    if (!dirEl || !valueEl || !nEl || !outEl) return;
+
+    const nWord = (n) => {
+      if (n >= 300) return "daily";
+      if (n === 12) return "monthly";
+      if (n === 4) return "quarterly";
+      if (n === 1) return "annual";
+      return `${n}x/year`;
+    };
+
+    const update = () => {
+      const dir = dirEl.value === "apy-to-apr" ? "apy-to-apr" : "apr-to-apy";
+      const rate = Math.max(0, Number(valueEl.value) || 0);
+      const n = Math.max(1, Number(nEl.value) || 365);
+      const toApy = dir === "apr-to-apy";
+
+      if (valueLabel) valueLabel.textContent = toApy ? "APR" : "APY";
+      if (outLabel) outLabel.textContent = toApy ? "Equivalent APY" : "Equivalent APR";
+
+      let out;
+      if (toApy) {
+        out = Calculations.aprToApy(rate, n) * 100;
+      } else {
+        out = Calculations.apyToApr(rate, n);
+      }
+
+      const pretty = Number.isFinite(out)
+        ? `${out.toLocaleString(undefined, { maximumFractionDigits: 4, minimumFractionDigits: 2 })}%`
+        : "-";
+      outEl.textContent = pretty;
+      if (hintEl) {
+        hintEl.textContent = toApy
+          ? `${rate}% APR at ${nWord(n)} compounding`
+          : `${rate}% APY implying nominal APR at ${nWord(n)} compounding`;
+      }
+    };
+
+    ["change", "input"].forEach((evt) => {
+      dirEl.addEventListener(evt, update);
+      valueEl.addEventListener(evt, update);
+      nEl.addEventListener(evt, update);
+    });
+    update();
   }
 
   function bindViewToggle() {

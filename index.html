@@ -703,6 +703,41 @@
               <div class="learn-callout">
                 <strong>Rule of thumb:</strong> when comparing a crypto “5% APR” to a bank “5% APY”, the bank product is slightly better if both truly compound — because APY already baked in the compounding. Always convert to the same measure before comparing.
               </div>
+
+              <div class="learn-converter" id="learnAprApyConverter">
+                <h3 class="mt-4 mb-2">Quick converter</h3>
+                <p class="learn-converter-lead">Convert the same underlying rate between APR and APY using your compounding frequency.</p>
+                <div class="learn-converter-grid">
+                  <div class="field">
+                    <label class="form-label" for="learn-rate-dir">Convert</label>
+                    <select class="form-select" id="learn-rate-dir">
+                      <option value="apr-to-apy" selected>APR to APY</option>
+                      <option value="apy-to-apr">APY to APR</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label class="form-label" for="learn-rate-value" id="learn-rate-value-label">APR</label>
+                    <div class="input-group">
+                      <input type="number" class="form-control" id="learn-rate-value" value="5" min="0" max="500" step="0.01" />
+                      <span class="input-group-text">%</span>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label class="form-label" for="learn-rate-n">Compounds per year</label>
+                    <select class="form-select" id="learn-rate-n">
+                      <option value="365" selected>Daily (365)</option>
+                      <option value="12">Monthly (12)</option>
+                      <option value="4">Quarterly (4)</option>
+                      <option value="1">Annually (1)</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="learn-converter-result" aria-live="polite">
+                  <div class="learn-converter-result-label" id="learn-rate-out-label">Equivalent APY</div>
+                  <div class="learn-converter-result-value" id="learn-rate-out">5.13%</div>
+                  <div class="learn-converter-result-hint" id="learn-rate-hint">5% APR at daily compounding</div>
+                </div>
+              </div>
             </div>
 
             <div class="tab-pane fade" id="learn-compounding">

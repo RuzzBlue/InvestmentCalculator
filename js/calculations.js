@@ -1477,6 +1477,7 @@ const Calculations = (() => {
   return {
     calculate,
     aprToApy,
+    apyToApr,
     toYears,
     toDays,
     contribPerYear,
