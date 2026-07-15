@@ -32,11 +32,13 @@
 
 html {
   scroll-behavior: smooth;
+  height: 100%;
 }
 
 body {
   margin: 0;
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
   font-family: var(--font-ui);
   color: var(--ink);
   background: var(--paper);
@@ -65,14 +67,50 @@ body {
   mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
 }
 
-/* Header */
-.app-header {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  backdrop-filter: blur(14px);
-  background: rgba(243, 240, 232, 0.78);
-  border-bottom: 1px solid var(--line);
+/* App shell: lock page scroll; columns scroll independently */
+.app-shell {
+  max-width: 1400px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding-top: 0.85rem;
+  padding-bottom: 0.65rem;
+  overflow: hidden;
+}
+
+.page-topbar {
+  flex: 0 0 auto;
+  padding: 0.1rem 0 0.75rem;
+}
+
+.app-main-row {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 0; /* flex sizing: take remaining viewport, enable nested scroll */
+  align-items: stretch;
+}
+
+.app-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+}
+
+.app-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding-top: 0.65rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.app-footer-sep {
+  opacity: 0.55;
 }
 
 .brand-mark {
@@ -127,29 +165,55 @@ body {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   backdrop-filter: blur(8px);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .calc-panel {
-  position: sticky;
-  top: 88px;
   padding: 1.15rem 1.15rem 1.35rem;
-  max-height: calc(100vh - 110px);
-  overflow: auto;
 }
 
 .results-panel {
-  padding: 1.35rem 1.4rem 1.6rem;
-  min-height: 560px;
+  padding: 1.15rem 1.25rem 1.4rem;
 }
 
 @media (max-width: 991.98px) {
-  .calc-panel {
-    position: static;
+  html,
+  body {
+    height: auto;
+    overflow: auto;
+  }
+
+  .app-shell {
+    height: auto;
+    overflow: visible;
+  }
+
+  .app-main-row,
+  .app-col {
+    height: auto;
     max-height: none;
+    min-height: 0;
+  }
+
+  .calc-panel,
+  .results-panel {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .calc-panel {
+    margin-bottom: 0.25rem;
+  }
+
+  .results-panel {
+    min-height: 420px;
   }
 }
 
-/* Calculator tabs */
+/* Calculator tabs — equal columns, full clickable hit area */
 .calc-tabs {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -159,22 +223,36 @@ body {
   border-radius: 14px;
 }
 
+.calc-tabs .nav-item {
+  min-width: 0;
+  width: 100%;
+}
+
 .calc-tabs .nav-link {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 0.2rem;
+  width: 100%;
+  height: 100%;
   border: 0;
   border-radius: 10px;
   color: var(--ink-soft);
   font-size: 0.72rem;
   font-weight: 600;
-  padding: 0.55rem 0.35rem;
+  padding: 0.65rem 0.4rem;
   background: transparent;
+  cursor: pointer;
 }
 
 .calc-tabs .nav-link i {
   font-size: 0.95rem;
+}
+
+.calc-tabs .nav-link:hover:not(.active) {
+  background: rgba(255, 253, 248, 0.55);
+  color: var(--ink);
 }
 
 .calc-tabs .nav-link.active {
@@ -209,6 +287,23 @@ body {
 .calc-form .form-select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 0.2rem rgba(15, 107, 76, 0.15);
+}
+
+/* Custom chevron on all calculator dropdowns */
+.calc-form select.form-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 2rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%234a5750'%3E%3Cpath d='M4.5 6.2 L8 9.7 L11.5 6.2' stroke='%234a5750' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  background-size: 12px 12px;
+  cursor: pointer;
+}
+
+.calc-form select.form-select:hover {
+  border-color: var(--accent);
 }
 
 .input-group-select {
@@ -284,41 +379,78 @@ body {
   margin-bottom: 1.15rem;
 }
 
-.btn-export,
-.btn-ghost {
+.btn-export {
   border-radius: 999px;
   font-weight: 600;
   padding: 0.4rem 0.9rem;
-}
-
-.btn-export {
   background: var(--ink);
   border: 0;
   color: #fff;
 }
 
-.btn-export:hover {
+.btn-export:hover:not(:disabled) {
   background: #000;
   color: #fff;
 }
 
-.btn-ghost {
-  background: transparent;
-  border: 1px solid var(--line-strong);
-  color: var(--ink-soft);
+.btn-export:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
-.btn-ghost:hover {
+.view-toggle {
+  display: inline-flex;
   background: var(--paper-2);
+  border-radius: 999px;
+  padding: 0.2rem;
+  gap: 0.15rem;
+}
+
+.btn-toggle {
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-weight: 600;
+  font-size: 0.82rem;
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  line-height: 1.2;
+}
+
+.btn-toggle:hover:not(:disabled):not(.active) {
   color: var(--ink);
+  background: rgba(255, 253, 248, 0.55);
+}
+
+.btn-toggle.active {
+  background: var(--surface-solid);
+  color: var(--accent-deep);
+  box-shadow: 0 2px 8px rgba(28, 36, 32, 0.08);
+}
+
+.btn-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* Metrics */
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 0.75rem;
   margin-bottom: 1.4rem;
+}
+
+@media (max-width: 1199.98px) {
+  .metric-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 575.98px) {
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .metric-card {
@@ -326,6 +458,13 @@ body {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   padding: 0.95rem 1rem;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(15, 107, 76, 0.28);
+  box-shadow: 0 10px 22px rgba(28, 36, 32, 0.08);
 }
 
 .metric-card .metric-label {
@@ -399,6 +538,13 @@ body {
   padding: 1rem;
   position: relative;
   overflow: hidden;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.scenario-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(15, 107, 76, 0.28);
+  box-shadow: 0 10px 22px rgba(28, 36, 32, 0.08);
 }
 
 .scenario-card::before {
@@ -472,7 +618,16 @@ body {
 
 .chart-wrap-sm {
   height: 260px;
-  max-width: 420px;
+  width: 100%;
+  max-width: none;
+}
+
+#compositionSection .section-heading {
+  margin-bottom: 0.15rem;
+}
+
+#compositionSection .section-sub {
+  margin-bottom: 0.65rem;
 }
 
 .chart-mode-badge {
@@ -668,24 +823,29 @@ body {
 
 .learn-tabs {
   flex-wrap: nowrap;
-  overflow-x: auto;
+  overflow-x: hidden;
+  overflow-y: hidden;
   border-bottom: 1px solid var(--line);
+  gap: 0.1rem;
 }
 
 .learn-tabs .nav-link {
   white-space: nowrap;
   color: var(--ink-soft);
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   border: 0;
   border-bottom: 2px solid transparent;
   border-radius: 0;
+  padding: 0.55rem 0.7rem 0.65rem;
+  margin-bottom: -1px;
 }
 
 .learn-tabs .nav-link.active {
   color: var(--accent-deep);
   background: transparent;
   border-bottom-color: var(--accent);
+  font-weight: 700;
 }
 
 .learn-content h3 {
@@ -765,13 +925,31 @@ body {
 
 /* Print / PDF helper */
 @media print {
-  .app-header,
+  html,
+  body {
+    height: auto;
+    overflow: visible;
+  }
+
+  .page-topbar,
   .calc-panel,
   .btn-export,
-  .btn-ghost,
-  .btn-learn {
+  .view-toggle,
+  .btn-learn,
+  .table-controls,
+  .table-pager {
     display: none !important;
   }
+
+  .app-shell,
+  .app-main-row,
+  .app-col,
+  .results-panel {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
   .results-panel {
     box-shadow: none;
     border: 0;

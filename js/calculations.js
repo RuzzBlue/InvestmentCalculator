@@ -56,6 +56,97 @@ const Calculations = (() => {
     return Math.pow(1 + r / n, n) - 1;
   }
 
+  function normalizeGrowth(growth) {
+    if (!growth || !growth.enabled) return null;
+    return {
+      enabled: true,
+      mode: growth.mode || "percent",
+      every: growth.every === "quarter" ? "quarter" : "year",
+      amount: Number(growth.amount) || 0,
+      percent: Number(growth.percent) || 0,
+      minPercent: Number(growth.minPercent),
+      maxPercent: Number(growth.maxPercent),
+    };
+  }
+
+  function applyGrowthStep(amount, growth, stepIndex) {
+    if (!growth) return amount;
+    if (growth.mode === "fixed") {
+      return Math.max(0, amount + (Number(growth.amount) || 0));
+    }
+    if (growth.mode === "percent") {
+      return Math.max(0, amount * (1 + (Number(growth.percent) || 0) / 100));
+    }
+    // Variable swing: smooth oscillating change between min/max (deterministic).
+    let minP = Number.isFinite(growth.minPercent) ? growth.minPercent : -2;
+    let maxP = Number.isFinite(growth.maxPercent) ? growth.maxPercent : 8;
+    if (minP > maxP) {
+      const tmp = minP;
+      minP = maxP;
+      maxP = tmp;
+    }
+    const mid = (minP + maxP) / 2;
+    const amp = (maxP - minP) / 2;
+    const delta = mid + amp * Math.sin(stepIndex * 0.9);
+    return Math.max(0, amount * (1 + delta / 100));
+  }
+
+  /**
+   * Steps through contributions with optional step-up growth every year/quarter.
+   * `baseContribution` is the form value (per month/quarter/year).
+   */
+  function createContributionStepper({
+    baseContribution = 0,
+    contribFreq = "monthly",
+    stepsPerYear = 12,
+    growth = null,
+  }) {
+    const g = normalizeGrowth(growth);
+    let currentAmount = Number(baseContribution) || 0;
+    let growthStep = 0;
+    const everySteps = !g
+      ? Infinity
+      : g.every === "quarter"
+        ? Math.max(1, Math.round(stepsPerYear / 4))
+        : Math.max(1, stepsPerYear);
+
+    return {
+      /** Call once per simulation period (1-based index). */
+      next(periodIndex) {
+        if (g && periodIndex > 1 && (periodIndex - 1) % everySteps === 0) {
+          currentAmount = applyGrowthStep(currentAmount, g, growthStep++);
+        }
+        const pmt = contribPerPeriod(currentAmount, contribFreq, stepsPerYear);
+        const annualized = contribPerYear(currentAmount, contribFreq);
+        return { pmt, currentAmount, annualized };
+      },
+    };
+  }
+
+  /**
+   * First time portfolio annual earnings (balance × rate) cover the then-current
+   * annual contribution rate — i.e. growth alone can replace deposits.
+   */
+  function findSelfFundingPoint(rows, annualRatePct) {
+    if (!rows?.length || !(annualRatePct > 0)) return null;
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const annualContrib = Number(row.annualContribution) || 0;
+      if (annualContrib <= 0) continue;
+      const annualEarnings = row.balance * (annualRatePct / 100);
+      if (annualEarnings >= annualContrib) {
+        return {
+          period: row.period,
+          label: row.label,
+          balance: row.balance,
+          annualContribution: annualContrib,
+          annualEarnings,
+        };
+      }
+    }
+    return null;
+  }
+
   /**
    * Generic periodic compound with contributions at start of each period.
    * Returns schedule rows + summary.
@@ -67,27 +158,37 @@ const Calculations = (() => {
     compoundsPerYear,
     contribution = 0,
     contribFreq = "monthly",
+    contribGrowth = null,
     labelPrefix = "Period",
   }) {
     const n = Math.max(1, compoundsPerYear);
     const totalPeriods = Math.max(1, Math.round(years * n));
     const ratePer = (annualRatePct / 100) / n;
-    const pmt = contribPerPeriod(contribution, contribFreq, n);
+    const stepper = createContributionStepper({
+      baseContribution: contribution,
+      contribFreq,
+      stepsPerYear: n,
+      growth: contribGrowth,
+    });
 
     let balance = principal;
     let invested = principal;
+    let endingContribution = Number(contribution) || 0;
     const rows = [];
 
-    // Opening row
     rows.push({
       period: 0,
       label: "Start",
       invested,
       earnings: 0,
       balance,
+      annualContribution: contribPerYear(contribution, contribFreq),
+      contributionLevel: Number(contribution) || 0,
     });
 
     for (let i = 1; i <= totalPeriods; i++) {
+      const { pmt, currentAmount, annualized } = stepper.next(i);
+      endingContribution = currentAmount;
       if (pmt > 0) {
         balance += pmt;
         invested += pmt;
@@ -100,13 +201,20 @@ const Calculations = (() => {
         invested,
         earnings,
         balance,
+        annualContribution: annualized,
+        contributionLevel: currentAmount,
       });
     }
 
     const final = rows[rows.length - 1];
+    const summary = summarize(final.invested, final.balance, annualRatePct, n, years);
+    summary.selfFund = findSelfFundingPoint(rows, annualRatePct);
+    summary.endingContribution = endingContribution;
+    summary.contribGrowthEnabled = !!(normalizeGrowth(contribGrowth));
+
     return {
       rows,
-      summary: summarize(final.invested, final.balance, annualRatePct, n, years),
+      summary,
       meta: { compoundsPerYear: n, years, annualRatePct },
     };
   }
@@ -157,6 +265,7 @@ const Calculations = (() => {
       compoundsPerYear: n,
       contribution: Number(input.contribution) || 0,
       contribFreq: input.contribFreq,
+      contribGrowth: input.contribGrowth,
     });
 
     // Display-friendly schedule: for daily over long spans, sample monthly
@@ -191,18 +300,37 @@ const Calculations = (() => {
     const steps = useDaily ? days : Math.max(1, Math.round(days / 30.4167));
     const daysPerStep = useDaily ? 1 : days / steps;
     const ratePerStep = Math.pow(1 + apr / 100 / DAYS_YEAR, daysPerStep) - 1;
-    const pmtPerStep = contribution
-      ? (contribPerYear(contribution, contribFreq) / DAYS_YEAR) * daysPerStep
-      : 0;
+    const stepsPerYear = useDaily ? DAYS_YEAR : 12;
+    const stepper = createContributionStepper({
+      baseContribution: contribution,
+      contribFreq,
+      stepsPerYear,
+      growth: input.contribGrowth,
+    });
 
     let balance = principal;
     let invested = principal;
-    const rows = [{ period: 0, label: "Start", invested, earnings: 0, balance }];
+    let endingContribution = contribution;
+    const rows = [{
+      period: 0,
+      label: "Start",
+      invested,
+      earnings: 0,
+      balance,
+      annualContribution: contribPerYear(contribution, contribFreq),
+      contributionLevel: contribution,
+    }];
 
     for (let i = 1; i <= steps; i++) {
-      if (pmtPerStep > 0) {
-        balance += pmtPerStep;
-        invested += pmtPerStep;
+      const { pmt, currentAmount, annualized } = stepper.next(i);
+      endingContribution = currentAmount;
+      // For daily mode, contribPerPeriod assumes stepsPerYear payments; convert annualized to step
+      const stepPmt = useDaily
+        ? (annualized / DAYS_YEAR) * daysPerStep
+        : pmt;
+      if (stepPmt > 0) {
+        balance += stepPmt;
+        invested += stepPmt;
       }
       balance *= 1 + ratePerStep;
       rows.push({
@@ -211,13 +339,19 @@ const Calculations = (() => {
         invested,
         earnings: balance - invested,
         balance,
+        annualContribution: annualized,
+        contributionLevel: currentAmount,
       });
     }
 
     const final = rows[rows.length - 1];
+    const summary = summarize(final.invested, final.balance, apr, DAYS_YEAR, years);
+    summary.selfFund = findSelfFundingPoint(rows, apr);
+    summary.endingContribution = endingContribution;
+    summary.contribGrowthEnabled = !!(normalizeGrowth(input.contribGrowth));
     const base = {
       rows,
-      summary: summarize(final.invested, final.balance, apr, DAYS_YEAR, years),
+      summary,
       meta: { compoundsPerYear: DAYS_YEAR, years, annualRatePct: apr },
     };
 
@@ -254,29 +388,39 @@ const Calculations = (() => {
     const steps = useDaily ? days : Math.max(1, Math.round(days / 30.4167));
     const daysPerStep = useDaily ? 1 : days / steps;
     const regularRate = Math.pow(1 + regularApr / 100 / DAYS_YEAR, daysPerStep) - 1;
-    const pmtPerStep = contribution
-      ? (contribPerYear(contribution, contribFreq) / DAYS_YEAR) * daysPerStep
-      : 0;
+    const stepsPerYear = useDaily ? DAYS_YEAR : 12;
+    const stepper = createContributionStepper({
+      baseContribution: contribution,
+      contribFreq,
+      stepsPerYear,
+      growth: input.contribGrowth,
+    });
 
     let balance = principal; // earn wallet (compounds)
     let invested = principal;
     let bonusCash = 0; // spot rewards, non-compounding
+    let endingContribution = contribution;
     const rows = [];
 
-    const snapshot = () => ({
+    const snapshot = (annualized = 0, contributionLevel = contribution) => ({
       invested,
       earnings: balance + bonusCash - invested,
       balance: balance + bonusCash,
       earnBalance: balance,
       bonusCash,
+      annualContribution: annualized,
+      contributionLevel,
     });
 
-    rows.push({ period: 0, label: "Start", ...snapshot() });
+    rows.push({ period: 0, label: "Start", ...snapshot(contribPerYear(contribution, contribFreq)) });
 
     for (let i = 1; i <= steps; i++) {
-      if (pmtPerStep > 0) {
-        balance += pmtPerStep;
-        invested += pmtPerStep;
+      const { pmt, currentAmount, annualized } = stepper.next(i);
+      endingContribution = currentAmount;
+      const stepPmt = useDaily ? (annualized / DAYS_YEAR) * daysPerStep : pmt;
+      if (stepPmt > 0) {
+        balance += stepPmt;
+        invested += stepPmt;
       }
       // Bonus on capped portion of earn balance (not including prior bonus cash)
       const bonusBase = Math.min(balance, bonusCap);
@@ -289,20 +433,24 @@ const Calculations = (() => {
       rows.push({
         period: i,
         label: useDaily ? `Day ${i}` : `Month ${i}`,
-        ...snapshot(),
+        ...snapshot(annualized, currentAmount),
       });
     }
 
     const final = rows[rows.length - 1];
     const effApr = estimateBlendedApr(principal, regularApr, bonusApr, bonusCap);
     const regularEarnings = final.earnBalance - final.invested;
+    const summary = {
+      ...summarize(final.invested, final.balance, effApr, DAYS_YEAR, years),
+      regularEarnings,
+      bonusEarnings: final.bonusCash,
+      selfFund: findSelfFundingPoint(rows, effApr),
+      endingContribution,
+      contribGrowthEnabled: !!(normalizeGrowth(input.contribGrowth)),
+    };
     const base = {
       rows,
-      summary: {
-        ...summarize(final.invested, final.balance, effApr, DAYS_YEAR, years),
-        regularEarnings,
-        bonusEarnings: final.bonusCash,
-      },
+      summary,
       meta: { compoundsPerYear: DAYS_YEAR, years, annualRatePct: effApr },
     };
 
@@ -405,7 +553,12 @@ const Calculations = (() => {
     const reinvest = !!input.reinvestDividends;
     const withdrawFee = Number(input.withdrawFee) || 0;
 
-    const pmt = contribPerPeriod(contribution, contribFreq, 12);
+    const stepper = createContributionStepper({
+      baseContribution: contribution,
+      contribFreq,
+      stepsPerYear: 12,
+      growth: input.contribGrowth,
+    });
     const monthlyPrice = priceReturn / 100 / 12;
     const monthlyExpense = expenseRatio / 100 / 12;
     const monthlyDiv = dividendYield / 100 / 12;
@@ -413,6 +566,7 @@ const Calculations = (() => {
     let sharesValue = principal;
     let invested = principal;
     let cashDividends = 0;
+    let endingContribution = contribution;
     const rows = [{
       period: 0,
       label: "Start",
@@ -420,9 +574,13 @@ const Calculations = (() => {
       earnings: 0,
       balance: principal,
       cashDividends: 0,
+      annualContribution: contribPerYear(contribution, contribFreq),
+      contributionLevel: contribution,
     }];
 
     for (let i = 1; i <= months; i++) {
+      const { pmt, currentAmount, annualized } = stepper.next(i);
+      endingContribution = currentAmount;
       if (pmt > 0) {
         sharesValue += pmt;
         invested += pmt;
@@ -445,22 +603,28 @@ const Calculations = (() => {
         earnings: balance - invested,
         balance,
         cashDividends,
+        annualContribution: annualized,
+        contributionLevel: currentAmount,
       });
     }
 
     const final = rows[rows.length - 1];
     const effectiveRate = priceReturn + (reinvest ? dividendYield : 0) - expenseRatio;
+    const summary = {
+      ...summarize(final.invested, final.balance, effectiveRate, 12, years),
+      cashDividends: final.cashDividends,
+      afterWithdraw: withdrawFee > 0 ? final.balance * (1 - withdrawFee / 100) : null,
+      withdrawFee,
+      expenseRatio,
+      dividendYield,
+      reinvest,
+      selfFund: findSelfFundingPoint(rows, effectiveRate),
+      endingContribution,
+      contribGrowthEnabled: !!(normalizeGrowth(input.contribGrowth)),
+    };
     const base = {
       rows,
-      summary: {
-        ...summarize(final.invested, final.balance, effectiveRate, 12, years),
-        cashDividends: final.cashDividends,
-        afterWithdraw: withdrawFee > 0 ? final.balance * (1 - withdrawFee / 100) : null,
-        withdrawFee,
-        expenseRatio,
-        dividendYield,
-        reinvest,
-      },
+      summary,
       meta: { compoundsPerYear: 12, years, annualRatePct: effectiveRate },
     };
 
@@ -506,6 +670,7 @@ const Calculations = (() => {
       compoundsPerYear: 12,
       contribution,
       contribFreq,
+      contribGrowth: input.contribGrowth,
     });
     const displayRows = months > 120
       ? downsampleToYears(result.rows)
@@ -593,6 +758,7 @@ const Calculations = (() => {
         compoundsPerYear: Number(input.compound) || 12,
         contribution: Number(input.contribution) || 0,
         contribFreq: input.contribFreq,
+        contribGrowth: input.contribGrowth,
       });
     }
 
@@ -634,16 +800,21 @@ const Calculations = (() => {
       const steps = useDaily ? days : Math.max(1, Math.round(days / 30.4167));
       const daysPerStep = useDaily ? 1 : days / steps;
       const ratePerStep = Math.pow(1 + newRate / 100 / DAYS_YEAR, daysPerStep) - 1;
-      const contribution = Number(input.contribution) || 0;
-      const pmtPerStep = contribution
-        ? (contribPerYear(contribution, input.contribFreq || "monthly") / DAYS_YEAR) * daysPerStep
-        : 0;
+      const stepsPerYear = useDaily ? DAYS_YEAR : 12;
+      const stepper = createContributionStepper({
+        baseContribution: Number(input.contribution) || 0,
+        contribFreq: input.contribFreq || "monthly",
+        stepsPerYear,
+        growth: input.contribGrowth,
+      });
       let balance = Number(input.principal) || 0;
       let invested = balance;
       for (let i = 1; i <= steps; i++) {
-        if (pmtPerStep > 0) {
-          balance += pmtPerStep;
-          invested += pmtPerStep;
+        const { pmt, annualized } = stepper.next(i);
+        const stepPmt = useDaily ? (annualized / DAYS_YEAR) * daysPerStep : pmt;
+        if (stepPmt > 0) {
+          balance += stepPmt;
+          invested += stepPmt;
         }
         balance *= 1 + ratePerStep;
       }
@@ -671,6 +842,7 @@ const Calculations = (() => {
         compoundsPerYear: 12,
         contribution: Number(input.contribution) || 0,
         contribFreq: input.contribFreq,
+        contribGrowth: input.contribGrowth,
       });
     }
 
@@ -687,7 +859,12 @@ const Calculations = (() => {
     const dividendYield = Number(input.dividendYield) || 0;
     const expenseRatio = Number(input.expenseRatio) || 0;
     const reinvest = !!input.reinvestDividends;
-    const pmt = contribPerPeriod(contribution, contribFreq, 12);
+    const stepper = createContributionStepper({
+      baseContribution: contribution,
+      contribFreq,
+      stepsPerYear: 12,
+      growth: input.contribGrowth,
+    });
     const monthlyPrice = priceReturn / 100 / 12;
     const monthlyExpense = expenseRatio / 100 / 12;
     const monthlyDiv = dividendYield / 100 / 12;
@@ -696,6 +873,7 @@ const Calculations = (() => {
     let invested = principal;
     let cashDividends = 0;
     for (let i = 1; i <= months; i++) {
+      const { pmt } = stepper.next(i);
       if (pmt > 0) {
         sharesValue += pmt;
         invested += pmt;
@@ -727,16 +905,22 @@ const Calculations = (() => {
     const steps = useDaily ? days : Math.max(1, Math.round(days / 30.4167));
     const daysPerStep = useDaily ? 1 : days / steps;
     const regularRate = Math.pow(1 + regularApr / 100 / DAYS_YEAR, daysPerStep) - 1;
-    const pmtPerStep = contribution
-      ? (contribPerYear(contribution, contribFreq) / DAYS_YEAR) * daysPerStep
-      : 0;
+    const stepsPerYear = useDaily ? DAYS_YEAR : 12;
+    const stepper = createContributionStepper({
+      baseContribution: contribution,
+      contribFreq,
+      stepsPerYear,
+      growth: input.contribGrowth,
+    });
     let balance = principal;
     let invested = principal;
     let bonusCash = 0;
     for (let i = 1; i <= steps; i++) {
-      if (pmtPerStep > 0) {
-        balance += pmtPerStep;
-        invested += pmtPerStep;
+      const { pmt, annualized } = stepper.next(i);
+      const stepPmt = useDaily ? (annualized / DAYS_YEAR) * daysPerStep : pmt;
+      if (stepPmt > 0) {
+        balance += stepPmt;
+        invested += stepPmt;
       }
       const bonusBase = Math.min(balance, bonusCap);
       bonusCash += bonusBase * (bonusApr / 100) * (daysPerStep / DAYS_YEAR);

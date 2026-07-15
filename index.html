@@ -14,41 +14,37 @@
 <body>
   <div class="app-bg" aria-hidden="true"></div>
 
-  <header class="app-header">
-    <div class="container-fluid px-3 px-lg-4">
-      <div class="d-flex align-items-center justify-content-between py-3">
-        <div class="brand d-flex align-items-center gap-2">
-          <span class="brand-mark" aria-hidden="true"><i class="fa-solid fa-chart-line"></i></span>
-          <div>
-            <h1 class="brand-name mb-0">YieldLens</h1>
-            <p class="brand-tag mb-0">See how your money actually compounds</p>
-          </div>
+  <main class="container-fluid px-3 px-lg-4 app-shell">
+    <div class="page-topbar d-flex align-items-center justify-content-between gap-3">
+      <div class="brand d-flex align-items-center gap-2">
+        <span class="brand-mark" aria-hidden="true"><i class="fa-solid fa-chart-line"></i></span>
+        <div>
+          <h1 class="brand-name mb-0">YieldLens</h1>
+          <p class="brand-tag mb-0">See how your money actually compounds</p>
         </div>
-        <button type="button" class="btn btn-learn" data-bs-toggle="modal" data-bs-target="#learnModal">
-          <i class="fa-solid fa-graduation-cap me-2"></i>Learn
-        </button>
       </div>
+      <button type="button" class="btn btn-learn" data-bs-toggle="modal" data-bs-target="#learnModal">
+        <i class="fa-solid fa-graduation-cap me-2"></i>Learn
+      </button>
     </div>
-  </header>
 
-  <main class="container-fluid px-3 px-lg-4 pb-5">
-    <div class="row g-4 align-items-start">
+    <div class="row g-3 g-lg-4 app-main-row">
       <!-- LEFT: Calculator -->
-      <div class="col-lg-5 col-xl-4">
+      <div class="col-lg-5 col-xl-4 app-col">
         <aside class="calc-panel" id="calcPanel">
           <ul class="nav nav-pills calc-tabs mb-3" id="calcTypeTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-              <button class="nav-link active" id="tab-investment" data-bs-toggle="pill" data-bs-target="#pane-investment" type="button" role="tab">
+            <li class="nav-item flex-fill" role="presentation">
+              <button class="nav-link active w-100" id="tab-investment" data-bs-toggle="pill" data-bs-target="#pane-investment" type="button" role="tab">
                 <i class="fa-solid fa-piggy-bank"></i><span>Investment</span>
               </button>
             </li>
-            <li class="nav-item" role="presentation">
-              <button class="nav-link" id="tab-crypto" data-bs-toggle="pill" data-bs-target="#pane-crypto" type="button" role="tab">
+            <li class="nav-item flex-fill" role="presentation">
+              <button class="nav-link w-100" id="tab-crypto" data-bs-toggle="pill" data-bs-target="#pane-crypto" type="button" role="tab">
                 <i class="fa-brands fa-bitcoin"></i><span>Crypto</span>
               </button>
             </li>
-            <li class="nav-item" role="presentation">
-              <button class="nav-link" id="tab-etf" data-bs-toggle="pill" data-bs-target="#pane-etf" type="button" role="tab">
+            <li class="nav-item flex-fill" role="presentation">
+              <button class="nav-link w-100" id="tab-etf" data-bs-toggle="pill" data-bs-target="#pane-etf" type="button" role="tab">
                 <i class="fa-solid fa-chart-pie"></i><span>Stocks / ETFs</span>
               </button>
             </li>
@@ -81,15 +77,73 @@
                     </select>
                   </div>
                 </div>
+                <div class="field field-check">
+                  <div class="form-check">
+                    <input class="form-check-input grow-toggle" type="checkbox" id="inv-grow-contrib" data-grow-prefix="inv" />
+                    <label class="form-check-label" for="inv-grow-contrib">Grow contributions over time</label>
+                  </div>
+                </div>
+                <div class="field-group d-none grow-fields" id="inv-grow-fields">
+                  <div class="field">
+                    <label class="form-label" for="inv-grow-mode">Increase mode</label>
+                    <select class="form-select grow-mode" id="inv-grow-mode" data-grow-prefix="inv">
+                      <option value="fixed">Fixed amount (+$)</option>
+                      <option value="percent" selected>Fixed percent (+%)</option>
+                      <option value="variable">Variable range (% swing)</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label class="form-label" for="inv-grow-every">Increase every</label>
+                    <select class="form-select" id="inv-grow-every">
+                      <option value="year" selected>Year</option>
+                      <option value="quarter">Quarter</option>
+                    </select>
+                  </div>
+                  <div class="field grow-fixed-wrap d-none" id="inv-grow-fixed-wrap">
+                    <label class="form-label" for="inv-grow-amount">Increase by</label>
+                    <div class="input-group">
+                      <span class="input-group-text">$</span>
+                      <input type="number" class="form-control" id="inv-grow-amount" value="50" min="0" step="10" />
+                    </div>
+                    <div class="form-hint">Added to the contribution amount each step (same unit as above).</div>
+                  </div>
+                  <div class="field grow-percent-wrap" id="inv-grow-percent-wrap">
+                    <label class="form-label" for="inv-grow-percent">Increase by</label>
+                    <div class="input-group">
+                      <input type="number" class="form-control" id="inv-grow-percent" value="3" min="0" step="0.1" />
+                      <span class="input-group-text">%</span>
+                    </div>
+                  </div>
+                  <div class="field grow-variable-wrap d-none" id="inv-grow-variable-wrap">
+                    <label class="form-label">Variable swing each step</label>
+                    <div class="row g-2">
+                      <div class="col-6">
+                        <div class="input-group">
+                          <span class="input-group-text">Min</span>
+                          <input type="number" class="form-control" id="inv-grow-min" value="-2" step="0.1" />
+                          <span class="input-group-text">%</span>
+                        </div>
+                      </div>
+                      <div class="col-6">
+                        <div class="input-group">
+                          <span class="input-group-text">Max</span>
+                          <input type="number" class="form-control" id="inv-grow-max" value="8" step="0.1" />
+                          <span class="input-group-text">%</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="form-hint">Smooth oscillating change between min and max (not random) so the curve stays gentle and reproducible.</div>
+                  </div>
+                </div>
                 <div class="field">
-                  <label class="form-label" for="inv-rate">Hypothetical annual rate of return</label>
+                  <label class="form-label" for="inv-rate">Hypothetical rate of return</label>
                   <div class="input-group">
                     <input type="number" class="form-control" id="inv-rate" value="7" min="0" max="100" step="0.01" required />
                     <span class="input-group-text">%</span>
                     <select class="form-select input-group-select" id="inv-compound">
-                      <option value="1">Annually</option>
+                      <option value="1" selected>Yearly</option>
                       <option value="4">Quarterly</option>
-                      <option value="12" selected>Monthly</option>
+                      <option value="12">Monthly</option>
                       <option value="365">Daily</option>
                     </select>
                   </div>
@@ -130,16 +184,75 @@
                   </div>
                 </div>
 
-                <div class="field" id="cry-contrib-wrap">
-                  <label class="form-label" for="cry-contribution">Additional contributions</label>
-                  <div class="input-group">
-                    <input type="number" class="form-control" id="cry-contribution" value="0" min="0" step="10" />
-                    <span class="input-group-text cry-symbol">USDT</span>
-                    <select class="form-select input-group-select" id="cry-contrib-freq">
-                      <option value="monthly" selected>Per month</option>
-                      <option value="quarterly">Per quarter</option>
-                      <option value="yearly">Per year</option>
-                    </select>
+                <div id="cry-contrib-wrap">
+                  <div class="field">
+                    <label class="form-label" for="cry-contribution">Additional contributions</label>
+                    <div class="input-group">
+                      <input type="number" class="form-control" id="cry-contribution" value="0" min="0" step="10" />
+                      <span class="input-group-text cry-symbol">USDT</span>
+                      <select class="form-select input-group-select" id="cry-contrib-freq">
+                        <option value="monthly" selected>Per month</option>
+                        <option value="quarterly">Per quarter</option>
+                        <option value="yearly">Per year</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="field field-check">
+                    <div class="form-check">
+                      <input class="form-check-input grow-toggle" type="checkbox" id="cry-grow-contrib" data-grow-prefix="cry" />
+                      <label class="form-check-label" for="cry-grow-contrib">Grow contributions over time</label>
+                    </div>
+                  </div>
+                  <div class="field-group d-none grow-fields" id="cry-grow-fields">
+                    <div class="field">
+                      <label class="form-label" for="cry-grow-mode">Increase mode</label>
+                      <select class="form-select grow-mode" id="cry-grow-mode" data-grow-prefix="cry">
+                        <option value="fixed">Fixed amount (+)</option>
+                        <option value="percent" selected>Fixed percent (+%)</option>
+                        <option value="variable">Variable range (% swing)</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label class="form-label" for="cry-grow-every">Increase every</label>
+                      <select class="form-select" id="cry-grow-every">
+                        <option value="year" selected>Year</option>
+                        <option value="quarter">Quarter</option>
+                      </select>
+                    </div>
+                    <div class="field grow-fixed-wrap d-none" id="cry-grow-fixed-wrap">
+                      <label class="form-label" for="cry-grow-amount">Increase by</label>
+                      <div class="input-group">
+                        <input type="number" class="form-control" id="cry-grow-amount" value="50" min="0" step="10" />
+                        <span class="input-group-text cry-symbol">USDT</span>
+                      </div>
+                    </div>
+                    <div class="field grow-percent-wrap" id="cry-grow-percent-wrap">
+                      <label class="form-label" for="cry-grow-percent">Increase by</label>
+                      <div class="input-group">
+                        <input type="number" class="form-control" id="cry-grow-percent" value="3" min="0" step="0.1" />
+                        <span class="input-group-text">%</span>
+                      </div>
+                    </div>
+                    <div class="field grow-variable-wrap d-none" id="cry-grow-variable-wrap">
+                      <label class="form-label">Variable swing each step</label>
+                      <div class="row g-2">
+                        <div class="col-6">
+                          <div class="input-group">
+                            <span class="input-group-text">Min</span>
+                            <input type="number" class="form-control" id="cry-grow-min" value="-2" step="0.1" />
+                            <span class="input-group-text">%</span>
+                          </div>
+                        </div>
+                        <div class="col-6">
+                          <div class="input-group">
+                            <span class="input-group-text">Max</span>
+                            <input type="number" class="form-control" id="cry-grow-max" value="8" step="0.1" />
+                            <span class="input-group-text">%</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="form-hint">Smooth oscillating change between min and max (reproducible, not random).</div>
+                    </div>
                   </div>
                 </div>
 
@@ -256,6 +369,63 @@
                     </select>
                   </div>
                 </div>
+                <div class="field field-check">
+                  <div class="form-check">
+                    <input class="form-check-input grow-toggle" type="checkbox" id="etf-grow-contrib" data-grow-prefix="etf" />
+                    <label class="form-check-label" for="etf-grow-contrib">Grow contributions over time</label>
+                  </div>
+                </div>
+                <div class="field-group d-none grow-fields" id="etf-grow-fields">
+                  <div class="field">
+                    <label class="form-label" for="etf-grow-mode">Increase mode</label>
+                    <select class="form-select grow-mode" id="etf-grow-mode" data-grow-prefix="etf">
+                      <option value="fixed">Fixed amount (+$)</option>
+                      <option value="percent" selected>Fixed percent (+%)</option>
+                      <option value="variable">Variable range (% swing)</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label class="form-label" for="etf-grow-every">Increase every</label>
+                    <select class="form-select" id="etf-grow-every">
+                      <option value="year" selected>Year</option>
+                      <option value="quarter">Quarter</option>
+                    </select>
+                  </div>
+                  <div class="field grow-fixed-wrap d-none" id="etf-grow-fixed-wrap">
+                    <label class="form-label" for="etf-grow-amount">Increase by</label>
+                    <div class="input-group">
+                      <span class="input-group-text">$</span>
+                      <input type="number" class="form-control" id="etf-grow-amount" value="50" min="0" step="10" />
+                    </div>
+                  </div>
+                  <div class="field grow-percent-wrap" id="etf-grow-percent-wrap">
+                    <label class="form-label" for="etf-grow-percent">Increase by</label>
+                    <div class="input-group">
+                      <input type="number" class="form-control" id="etf-grow-percent" value="3" min="0" step="0.1" />
+                      <span class="input-group-text">%</span>
+                    </div>
+                  </div>
+                  <div class="field grow-variable-wrap d-none" id="etf-grow-variable-wrap">
+                    <label class="form-label">Variable swing each step</label>
+                    <div class="row g-2">
+                      <div class="col-6">
+                        <div class="input-group">
+                          <span class="input-group-text">Min</span>
+                          <input type="number" class="form-control" id="etf-grow-min" value="-2" step="0.1" />
+                          <span class="input-group-text">%</span>
+                        </div>
+                      </div>
+                      <div class="col-6">
+                        <div class="input-group">
+                          <span class="input-group-text">Max</span>
+                          <input type="number" class="form-control" id="etf-grow-max" value="8" step="0.1" />
+                          <span class="input-group-text">%</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="form-hint">Smooth oscillating change between min and max (reproducible, not random).</div>
+                  </div>
+                </div>
                 <div class="field">
                   <label class="form-label" for="etf-period">Investment period</label>
                   <div class="input-group">
@@ -320,8 +490,25 @@
       </div>
 
       <!-- RIGHT: Results / Learn context -->
-      <div class="col-lg-7 col-xl-8">
+      <div class="col-lg-7 col-xl-8 app-col">
         <section class="results-panel" id="resultsPanel">
+          <div class="results-toolbar">
+            <h2 class="results-title mb-0" id="resultsPanelTitle">Guide</h2>
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+              <div class="view-toggle" id="viewToggle" role="group" aria-label="Guide or results">
+                <button type="button" class="btn btn-toggle active" id="btn-show-guide" aria-pressed="true">
+                  <i class="fa-solid fa-book-open me-1"></i>Guide
+                </button>
+                <button type="button" class="btn btn-toggle" id="btn-show-results" aria-pressed="false" disabled title="Calculate first to unlock results">
+                  <i class="fa-solid fa-chart-column me-1"></i>Results
+                </button>
+              </div>
+              <button type="button" class="btn btn-export btn-sm" id="btn-export-pdf" disabled title="Calculate first to export">
+                <i class="fa-solid fa-file-pdf me-1"></i>Export PDF
+              </button>
+            </div>
+          </div>
+
           <!-- Pre-calculate context -->
           <div id="preCalcView">
             <div class="results-intro" id="contextPanel">
@@ -331,18 +518,6 @@
 
           <!-- Post-calculate results -->
           <div id="resultsView" class="d-none">
-            <div class="results-toolbar">
-              <h2 class="results-title mb-0">Calculation Results</h2>
-              <div class="d-flex gap-2 flex-wrap">
-                <button type="button" class="btn btn-ghost btn-sm" id="btn-reset-view" title="Back to guide">
-                  <i class="fa-solid fa-book-open me-1"></i>Guide
-                </button>
-                <button type="button" class="btn btn-export btn-sm" id="btn-export-pdf">
-                  <i class="fa-solid fa-file-pdf me-1"></i>Export PDF
-                </button>
-              </div>
-            </div>
-
             <div id="exportRoot">
               <p class="results-meta" id="resultsMeta"></p>
 
@@ -367,9 +542,21 @@
               </div>
 
               <div class="section-block" id="compositionSection">
-                <h3 class="section-heading">Where the final balance comes from</h3>
-                <div class="chart-wrap chart-wrap-sm">
-                  <canvas id="compositionChart"></canvas>
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <h3 class="section-heading">Where the final balance comes from</h3>
+                    <p class="section-sub">Share of capital you put in vs. growth earned.</p>
+                    <div class="chart-wrap chart-wrap-sm">
+                      <canvas id="compositionChart"></canvas>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <h3 class="section-heading">Scenario outcomes</h3>
+                    <p class="section-sub">Final balances under Expected, Best, and Worst rates.</p>
+                    <div class="chart-wrap chart-wrap-sm">
+                      <canvas id="scenarioChart"></canvas>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -410,6 +597,12 @@
         </section>
       </div>
     </div>
+
+    <footer class="app-footer">
+      <span>YieldLens</span>
+      <span class="app-footer-sep" aria-hidden="true">·</span>
+      <span>Branko Pereira</span>
+    </footer>
   </main>
 
   <!-- LEARN MODAL -->
@@ -553,8 +746,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="js/calculations.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/pdf-export.js"></script>

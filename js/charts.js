@@ -5,11 +5,15 @@
 const Charts = (() => {
   let growthChart = null;
   let compositionChart = null;
+  let scenarioChart = null;
 
   const COLORS = {
     balance: "#0f6b4c",
     invested: "#4a5750",
     earnings: "#b8842a",
+    expected: "#b8842a",
+    best: "#0f6b4c",
+    worst: "#9b3b2e",
     grid: "rgba(28, 36, 32, 0.08)",
     text: "#4a5750",
   };
@@ -34,14 +38,12 @@ const Charts = (() => {
   }
 
   function destroyAll() {
-    if (growthChart) {
-      growthChart.destroy();
-      growthChart = null;
-    }
-    if (compositionChart) {
-      compositionChart.destroy();
-      compositionChart = null;
-    }
+    [growthChart, compositionChart, scenarioChart].forEach((chart) => {
+      if (chart) chart.destroy();
+    });
+    growthChart = null;
+    compositionChart = null;
+    scenarioChart = null;
   }
 
   function renderGrowth(canvas, result) {
@@ -165,10 +167,87 @@ const Charts = (() => {
     });
   }
 
+  function renderScenarios(canvas, result) {
+    if (!canvas || !result?.scenarios) return;
+    const currency = result.currency;
+    const asset = result.asset;
+    const { expected, best, worst } = result.scenarios;
+
+    if (scenarioChart) scenarioChart.destroy();
+
+    scenarioChart = new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels: ["Expected", "Best (+20%)", "Worst (−20%)"],
+        datasets: [
+          {
+            label: "Final balance",
+            data: [
+              expected.finalBalance,
+              best.finalBalance,
+              worst.finalBalance,
+            ],
+            backgroundColor: [COLORS.expected, COLORS.best, COLORS.worst],
+            borderRadius: 8,
+            borderSkipped: false,
+            maxBarThickness: 48,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const key = ["expected", "best", "worst"][ctx.dataIndex];
+                const sc = result.scenarios[key];
+                return [
+                  `Balance: ${formatMoney(sc.finalBalance, currency, asset)}`,
+                  `Earnings: ${formatMoney(sc.earnings, currency, asset)}`,
+                  `ROI: ${Number(sc.roi).toFixed(2)}%`,
+                ];
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { color: COLORS.text },
+            grid: { display: false },
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              color: COLORS.text,
+              callback: (v) => {
+                if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(1) + "M";
+                if (Math.abs(v) >= 1e3) return (v / 1e3).toFixed(1) + "k";
+                return v;
+              },
+            },
+            grid: { color: COLORS.grid },
+          },
+        },
+      },
+    });
+  }
+
   function renderAll(result) {
     renderGrowth(document.getElementById("growthChart"), result);
     renderComposition(document.getElementById("compositionChart"), result);
+    renderScenarios(document.getElementById("scenarioChart"), result);
   }
 
-  return { renderAll, destroyAll, formatMoney };
+  function getChartImages() {
+    const out = {};
+    if (growthChart) out.growth = growthChart.toBase64Image("image/png", 1);
+    if (compositionChart) out.composition = compositionChart.toBase64Image("image/png", 1);
+    if (scenarioChart) out.scenario = scenarioChart.toBase64Image("image/png", 1);
+    return out;
+  }
+
+  return { renderAll, destroyAll, formatMoney, getChartImages };
 })();

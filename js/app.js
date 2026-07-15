@@ -7,6 +7,7 @@
     lastResult: null,
     tablePage: 1,
     pageSize: 10,
+    activeView: "guide", // "guide" | "results"
   };
 
   const CONTEXT = {
@@ -35,7 +36,7 @@
           body: "If a product only quotes APR and says “paid daily into Spot” without auto-reinvest, your true path is closer to simple interest unless you manually restake.",
         },
       ],
-      note: "Hit Calculate to replace this guide with metrics, charts, and a period-by-period table.",
+      note: "Hit Calculate to open Results. You can toggle back to this Guide anytime without losing your last run.",
     },
     crypto: {
       title: "Crypto Earn & staking",
@@ -102,9 +103,20 @@
     bindAssetSymbol();
     bindFixedTermCustom();
     bindTableControls();
-    document.getElementById("btn-export-pdf")?.addEventListener("click", () => PdfExport.exportResults());
-    document.getElementById("btn-reset-view")?.addEventListener("click", () => showPreCalc());
+    bindViewToggle();
+    bindContributionGrowth();
+    updateViewChrome();
+    document.getElementById("btn-export-pdf")?.addEventListener("click", () => {
+      if (state.lastResult) PdfExport.exportResults(state.lastResult);
+    });
   });
+
+  function bindViewToggle() {
+    document.getElementById("btn-show-guide")?.addEventListener("click", () => setView("guide"));
+    document.getElementById("btn-show-results")?.addEventListener("click", () => {
+      if (state.lastResult) setView("results");
+    });
+  }
 
   function bindTabs() {
     document.querySelectorAll('#calcTypeTabs button[data-bs-toggle="pill"]').forEach((btn) => {
@@ -113,7 +125,8 @@
         if (id === "tab-investment") renderContext("investment");
         if (id === "tab-crypto") renderContext("crypto");
         if (id === "tab-etf") renderContext("etf");
-        showPreCalc();
+        // Keep prior results available via the Results toggle; land on Guide for the new tab.
+        setView("guide");
       });
     });
   }
@@ -137,16 +150,86 @@
     `;
   }
 
-  function showPreCalc() {
-    document.getElementById("preCalcView")?.classList.remove("d-none");
-    document.getElementById("resultsView")?.classList.add("d-none");
+  function setView(view) {
+    if (view === "results" && !state.lastResult) return;
+    state.activeView = view;
+    updateViewChrome();
+
+    // Re-draw charts after the panel is visible again (avoids zero-size canvases).
+    if (state.activeView === "results" && state.lastResult) {
+      requestAnimationFrame(() => Charts.renderAll(state.lastResult));
+    }
   }
 
-  function showResults() {
-    document.getElementById("preCalcView")?.classList.add("d-none");
-    const view = document.getElementById("resultsView");
-    view?.classList.remove("d-none");
-    view?.classList.add("show-animate");
+  function updateViewChrome() {
+    const hasResults = !!state.lastResult;
+    const showingResults = state.activeView === "results" && hasResults;
+
+    document.getElementById("preCalcView")?.classList.toggle("d-none", showingResults);
+    const resultsView = document.getElementById("resultsView");
+    resultsView?.classList.toggle("d-none", !showingResults);
+    if (showingResults) resultsView?.classList.add("show-animate");
+
+    const title = document.getElementById("resultsPanelTitle");
+    if (title) title.textContent = showingResults ? "Calculation Results" : "Guide";
+
+    const btnGuide = document.getElementById("btn-show-guide");
+    const btnResults = document.getElementById("btn-show-results");
+    const btnExport = document.getElementById("btn-export-pdf");
+
+    btnGuide?.classList.toggle("active", !showingResults);
+    btnResults?.classList.toggle("active", showingResults);
+    btnGuide?.setAttribute("aria-pressed", String(!showingResults));
+    btnResults?.setAttribute("aria-pressed", String(showingResults));
+
+    if (btnResults) {
+      btnResults.disabled = !hasResults;
+      btnResults.title = hasResults ? "Show calculation results" : "Calculate first to unlock results";
+    }
+    if (btnExport) {
+      btnExport.disabled = !hasResults;
+      btnExport.title = hasResults ? "Export full results to PDF" : "Calculate first to export";
+    }
+  }
+
+  function bindContributionGrowth() {
+    document.querySelectorAll(".grow-toggle").forEach((el) => {
+      el.addEventListener("change", () => syncGrowFields(el.dataset.growPrefix));
+      syncGrowFields(el.dataset.growPrefix);
+    });
+    document.querySelectorAll(".grow-mode").forEach((el) => {
+      el.addEventListener("change", () => syncGrowMode(el.dataset.growPrefix));
+      syncGrowMode(el.dataset.growPrefix);
+    });
+  }
+
+  function syncGrowFields(prefix) {
+    if (!prefix) return;
+    const on = document.getElementById(`${prefix}-grow-contrib`)?.checked;
+    document.getElementById(`${prefix}-grow-fields`)?.classList.toggle("d-none", !on);
+    if (on) syncGrowMode(prefix);
+  }
+
+  function syncGrowMode(prefix) {
+    if (!prefix) return;
+    const mode = sel(`${prefix}-grow-mode`) || "percent";
+    document.getElementById(`${prefix}-grow-fixed-wrap`)?.classList.toggle("d-none", mode !== "fixed");
+    document.getElementById(`${prefix}-grow-percent-wrap`)?.classList.toggle("d-none", mode !== "percent");
+    document.getElementById(`${prefix}-grow-variable-wrap`)?.classList.toggle("d-none", mode !== "variable");
+  }
+
+  function readContribGrowth(prefix) {
+    const enabled = !!document.getElementById(`${prefix}-grow-contrib`)?.checked;
+    if (!enabled) return { enabled: false };
+    return {
+      enabled: true,
+      mode: sel(`${prefix}-grow-mode`) || "percent",
+      every: sel(`${prefix}-grow-every`) || "year",
+      amount: val(`${prefix}-grow-amount`),
+      percent: val(`${prefix}-grow-percent`),
+      minPercent: Number(document.getElementById(`${prefix}-grow-min`)?.value),
+      maxPercent: Number(document.getElementById(`${prefix}-grow-max`)?.value),
+    };
   }
 
   function bindForms() {
@@ -157,6 +240,7 @@
         years: val("inv-years"),
         contribution: val("inv-contribution"),
         contribFreq: sel("inv-contrib-freq"),
+        contribGrowth: readContribGrowth("inv"),
         rate: val("inv-rate"),
         compound: sel("inv-compound"),
       };
@@ -172,6 +256,7 @@
         asset: sel("cry-asset"),
         contribution: val("cry-contribution"),
         contribFreq: sel("cry-contrib-freq"),
+        contribGrowth: readContribGrowth("cry"),
         period: val("cry-period"),
         periodUnit: sel("cry-period-unit"),
         apr: val("cry-apr"),
@@ -192,6 +277,7 @@
         principal: val("etf-principal"),
         contribution: val("etf-contribution"),
         contribFreq: sel("etf-contrib-freq"),
+        contribGrowth: readContribGrowth("etf"),
         period: val("etf-period"),
         periodUnit: sel("etf-period-unit"),
         annualReturn: val("etf-return"),
@@ -207,13 +293,13 @@
   function run(source, input) {
     try {
       const result = Calculations.calculate(source, input);
-      // keep raw input on result for introspection
       result.input = input;
       state.lastResult = result;
       state.tablePage = 1;
       renderResults(result);
-      showResults();
-      document.getElementById("resultsPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setView("results");
+      const panel = document.getElementById("resultsPanel");
+      if (panel) panel.scrollTop = 0;
     } catch (err) {
       console.error(err);
       alert("Calculation failed. Check your inputs and try again.");
@@ -312,39 +398,7 @@
 
     document.getElementById("resultsMeta").textContent = buildMeta(result);
 
-    // Metrics
-    const metrics = [
-      { label: "Total invested", value: money(s.totalInvested) },
-      { label: "Earnings", value: money(s.earnings), sub: s.roi != null ? `ROI ${fmtPct(s.roi)}` : null },
-      { label: "Final balance", value: money(s.finalBalance), highlight: true },
-      { label: "Return on investment", value: fmtPct(s.roi), sub: s.apy != null ? `Effective APY ${fmtPct(s.apy)}` : null },
-    ];
-
-    if (result.extras?.afterWithdraw != null) {
-      metrics.push({
-        label: "After withdraw",
-        value: money(result.extras.afterWithdraw),
-        sub: `Fee ${fmtPct(result.extras.withdrawFee)}`,
-        warn: true,
-      });
-    }
-
-    if (result.extras?.bonusEarnings != null) {
-      metrics.push({
-        label: "Bonus rewards (non-compounded)",
-        value: money(result.extras.bonusEarnings),
-        sub: "Paid like Spot-style bonus APR",
-      });
-    }
-
-    if (s.cagr != null && result.years >= 1) {
-      metrics.push({
-        label: "CAGR (on invested)",
-        value: fmtPct(s.cagr),
-        sub: "Annualized growth of contributions → final",
-      });
-    }
-
+    const metrics = buildMetricCards(result, money);
     const grid = document.getElementById("metricGrid");
     grid.innerHTML = metrics.map((m) => `
       <div class="metric-card${m.highlight ? " metric-highlight" : ""}${m.warn ? " metric-warn" : ""}">
@@ -410,7 +464,131 @@
     if (result.days) parts.push(`${result.days} day${result.days === 1 ? "" : "s"}`);
     else if (result.years) parts.push(`${formatYears(result.years)}`);
     parts.push(`Assumed rate ${fmtPct(result.ratePct)}`);
+    if (result.summary?.contribGrowthEnabled) parts.push("Growing contributions");
     return parts.join(" · ");
+  }
+
+  /**
+   * Prefer up to 8 useful cards. Priority: core → situational → analytic → scenario fallbacks.
+   */
+  function buildMetricCards(result, money) {
+    const s = result.summary || {};
+    const sc = result.scenarios || {};
+    const cards = [];
+    const push = (card) => {
+      if (!card || cards.length >= 8) return;
+      if (cards.some((c) => c.label === card.label)) return;
+      cards.push(card);
+    };
+
+    push({ label: "Total invested", value: money(s.totalInvested) });
+    push({
+      label: "Earnings",
+      value: money(s.earnings),
+      sub: s.roi != null ? `ROI ${fmtPct(s.roi)}` : null,
+    });
+    push({ label: "Final balance", value: money(s.finalBalance), highlight: true });
+    push({
+      label: "Return on investment",
+      value: fmtPct(s.roi),
+      sub: s.apy != null ? `Effective APY ${fmtPct(s.apy)}` : null,
+    });
+
+    if (result.extras?.afterWithdraw != null) {
+      push({
+        label: "After withdraw",
+        value: money(result.extras.afterWithdraw),
+        sub: `Fee ${fmtPct(result.extras.withdrawFee)}`,
+        warn: true,
+      });
+    }
+
+    if (result.extras?.bonusEarnings != null && result.extras.bonusEarnings > 0) {
+      push({
+        label: "Bonus rewards",
+        value: money(result.extras.bonusEarnings),
+        sub: "Non-compounding bonus APR",
+      });
+    }
+
+    if (result.extras?.reinvest === false && (result.extras.cashDividends || 0) > 0) {
+      push({
+        label: "Cash dividends",
+        value: money(result.extras.cashDividends),
+        sub: "Taken as cash (not DRIP’d)",
+      });
+    } else if (
+      result.subtype === "advanced" &&
+      result.extras?.reinvest &&
+      (s.dividendYield || 0) > 0 &&
+      s.finalBalance > 0
+    ) {
+      const estDiv = s.finalBalance * (s.dividendYield / 100);
+      push({
+        label: "Est. annual dividends",
+        value: money(estDiv),
+        sub: `At final balance × ${fmtPct(s.dividendYield)} yield`,
+      });
+    }
+
+    if (s.selfFund) {
+      push({
+        label: "Self-funding from",
+        value: String(s.selfFund.label || "—"),
+        sub: "Earnings alone cover ongoing deposits",
+      });
+    }
+
+    if (s.contribGrowthEnabled && s.endingContribution != null) {
+      push({
+        label: "Ending contribution",
+        value: money(s.endingContribution),
+        sub: "Contribution level at the final period",
+      });
+    }
+
+    if (s.apy != null && result.compoundsPerYear > 1) {
+      push({
+        label: "Effective APY",
+        value: fmtPct(s.apy),
+        sub: `From ${fmtPct(result.ratePct)} compounded`,
+      });
+    }
+
+    if (s.cagr != null && result.years >= 1) {
+      push({
+        label: "CAGR (on invested)",
+        value: fmtPct(s.cagr),
+        sub: "Annualized: contributions → final",
+      });
+    }
+
+    if (result.ratePct > 0) {
+      const doubleYears = 72 / result.ratePct;
+      push({
+        label: "Years to double",
+        value: `${doubleYears.toFixed(1)} yrs`,
+        sub: "Rule of 72 (rate only, no deposits)",
+      });
+    }
+
+    // Fill remaining slots with scenario totals (avoid if situational cards already crowded)
+    if (sc.best) {
+      push({
+        label: "Best-case balance",
+        value: money(sc.best.finalBalance),
+        sub: "+20% rate scenario",
+      });
+    }
+    if (sc.worst) {
+      push({
+        label: "Worst-case balance",
+        value: money(sc.worst.finalBalance),
+        sub: "−20% rate scenario",
+      });
+    }
+
+    return cards.slice(0, 8);
   }
 
   function formatYears(y) {
