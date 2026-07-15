@@ -131,24 +131,33 @@ const Calculations = (() => {
     }
   }
 
+  function normalizeContribTiming(timing, legacyAfterStart) {
+    if (timing === "beginning" || timing === "end") return timing;
+    // Legacy checkbox: false = beginning, true = old “after start” (now true end-of-period).
+    if (legacyAfterStart === false) return "beginning";
+    return "end";
+  }
+
+  function timingFromInput(input) {
+    return normalizeContribTiming(input?.contribTiming, input?.contribAfterStart);
+  }
+
   /**
    * Contribution cash-flows on an event timeline (independent of compounding steps).
    *
-   * Initial deposit is the t=0 transfer (this month / quarter / year).
-   * When contribAfterStart is true (default), additional contributions start on the
-   * *next* interval (monthly → events at 1/12, 2/12, … — first extra = next month).
-   * When false (“with starting amount”), the first recurring deposit lands in the
-   * same opening period as the principal (events at 0, 1/12, … — typical online calculators).
+   * beginning — annuity due: deposit at the start of each contrib interval (t = 0, 1/f, …)
+   * end — ordinary annuity: deposit at the end of each contrib interval (t = 1/f, 2/f, …)
    *
-   * Half-open window [t0, t1) so a yearly boundary event lands in the following step.
+   * Both modes produce the same number of deposits over the horizon; only timing differs.
    */
   function createContributionStepper({
     baseContribution = 0,
     contribFreq = "monthly",
     stepsPerYear = 12,
     growth = null,
-    contribAfterStart = true,
+    contribTiming = "end",
   }) {
+    const atBeginning = contribTiming !== "end";
     const g = normalizeGrowth(growth);
     let currentAmount = Number(baseContribution) || 0;
     let growthStep = 0;
@@ -156,10 +165,11 @@ const Calculations = (() => {
     const spy = Math.max(1, stepsPerYear);
     const growthPerYear = !g ? 0 : g.every === "quarter" ? 4 : 1;
     let nextGrowthBoundary = growthPerYear > 0 ? 1 / growthPerYear : Infinity;
-    // Event k occurs at time k/eventsPerYear; k=0 only when contribAfterStart is false.
-    let nextEvent = contribAfterStart ? 1 : 0;
+    // beginning: event 0 at t=0; end: event 1 at first period boundary.
+    let nextEvent = atBeginning ? 0 : 1;
 
     return {
+      atBeginning,
       /** Call once per simulation period (1-based index). */
       next(periodIndex) {
         const t0 = (periodIndex - 1) / spy;
@@ -177,9 +187,14 @@ const Calculations = (() => {
         let pmt = 0;
         while (true) {
           const et = nextEvent / eventsPerYear;
-          if (et >= t1 - 1e-12) break;
-          if (et >= t0 - 1e-12) {
-            pmt += currentAmount;
+          if (atBeginning) {
+            // [t0, t1) — deposit at period start lands in this step
+            if (et >= t1 - 1e-12) break;
+            if (et >= t0 - 1e-12) pmt += currentAmount;
+          } else {
+            // (t0, t1] — deposit at period end lands in this step
+            if (et > t1 + 1e-12) break;
+            if (et > t0 + 1e-12 && et <= t1 + 1e-12) pmt += currentAmount;
           }
           nextEvent += 1;
         }
@@ -218,8 +233,8 @@ const Calculations = (() => {
   }
 
   /**
-   * Generic periodic compound with contributions at start of each period.
-   * Returns schedule rows + summary.
+   * Generic periodic compound with recurring contributions.
+   * beginning = deposit then compound; end = compound then deposit.
    */
   function compoundSchedule({
     principal,
@@ -229,9 +244,11 @@ const Calculations = (() => {
     contribution = 0,
     contribFreq = "monthly",
     contribGrowth = null,
-    contribAfterStart = true,
+    contribTiming = "end",
+    contribAfterStart,
     labelPrefix = "Period",
   }) {
+    const timing = normalizeContribTiming(contribTiming, contribAfterStart);
     const n = Math.max(1, compoundsPerYear);
     const totalPeriods = Math.max(1, Math.round(years * n));
     const ratePer = (annualRatePct / 100) / n;
@@ -240,8 +257,9 @@ const Calculations = (() => {
       contribFreq,
       stepsPerYear: n,
       growth: contribGrowth,
-      contribAfterStart,
+      contribTiming: timing,
     });
+    const atBeginning = stepper.atBeginning;
 
     let balance = principal;
     let invested = principal;
@@ -263,11 +281,19 @@ const Calculations = (() => {
     for (let i = 1; i <= totalPeriods; i++) {
       const { pmt, currentAmount, annualized } = stepper.next(i);
       endingContribution = currentAmount;
-      if (pmt > 0) {
-        balance += pmt;
-        invested += pmt;
+      if (atBeginning) {
+        if (pmt > 0) {
+          balance += pmt;
+          invested += pmt;
+        }
+        balance *= 1 + ratePer;
+      } else {
+        balance *= 1 + ratePer;
+        if (pmt > 0) {
+          balance += pmt;
+          invested += pmt;
+        }
       }
-      balance *= 1 + ratePer;
       const earnings = balance - invested;
       rows.push({
         period: i,
@@ -340,7 +366,7 @@ const Calculations = (() => {
       contribution: Number(input.contribution) || 0,
       contribFreq: input.contribFreq,
       contribGrowth: input.contribGrowth,
-      contribAfterStart: input.contribAfterStart !== false,
+      contribTiming: timingFromInput(input),
     });
 
     // Display-friendly schedule: for daily over long spans, sample monthly
@@ -386,8 +412,9 @@ const Calculations = (() => {
       contribFreq,
       stepsPerYear,
       growth: input.contribGrowth,
-      contribAfterStart: input.contribAfterStart !== false,
+      contribTiming: timingFromInput(input),
     });
+    const atBeginning = stepper.atBeginning;
 
     let balance = principal;
     let invested = principal;
@@ -405,14 +432,22 @@ const Calculations = (() => {
     for (let i = 1; i <= steps; i++) {
       const { pmt, currentAmount, annualized } = stepper.next(i);
       endingContribution = currentAmount;
-      if (pmt > 0) {
-        balance += pmt;
-        invested += pmt;
+      if (atBeginning) {
+        if (pmt > 0) {
+          balance += pmt;
+          invested += pmt;
+        }
+        balance *= 1 + ratePerStep;
+      } else {
+        balance *= 1 + ratePerStep;
+        if (pmt > 0) {
+          balance += pmt;
+          invested += pmt;
+        }
       }
-      balance *= 1 + ratePerStep;
       rows.push({
         period: i,
-        label: useDaily ? `Day ${i}` : `Month ${i}`,
+        label: useDaily ? `Day ${i}` : periodLabel(i, 12),
         invested,
         earnings: balance - invested,
         balance,
@@ -489,8 +524,9 @@ const Calculations = (() => {
       contribFreq,
       stepsPerYear,
       growth: input.contribGrowth,
-      contribAfterStart: input.contribAfterStart !== false,
+      contribTiming: timingFromInput(input),
     });
+    const atBeginning = stepper.atBeginning;
 
     let balance = principal; // earn wallet (compounds)
     let invested = principal;
@@ -513,7 +549,7 @@ const Calculations = (() => {
     for (let i = 1; i <= steps; i++) {
       const { pmt, currentAmount, annualized } = stepper.next(i);
       endingContribution = currentAmount;
-      if (pmt > 0) {
+      if (atBeginning && pmt > 0) {
         balance += pmt;
         invested += pmt;
       }
@@ -525,9 +561,14 @@ const Calculations = (() => {
       // Regular APR compounds on earn balance
       balance *= 1 + regularRate;
 
+      if (!atBeginning && pmt > 0) {
+        balance += pmt;
+        invested += pmt;
+      }
+
       rows.push({
         period: i,
-        label: useDaily ? `Day ${i}` : `Month ${i}`,
+        label: useDaily ? `Day ${i}` : periodLabel(i, 12),
         ...snapshot(annualized, currentAmount),
       });
     }
@@ -655,8 +696,9 @@ const Calculations = (() => {
       contribFreq,
       stepsPerYear: 12,
       growth: input.contribGrowth,
-      contribAfterStart: input.contribAfterStart !== false,
+      contribTiming: timingFromInput(input),
     });
+    const atBeginning = stepper.atBeginning;
     const monthlyPrice = priceReturn / 100 / 12;
     const monthlyExpense = expenseRatio / 100 / 12;
     const monthlyDiv = dividendYield / 100 / 12;
@@ -679,7 +721,7 @@ const Calculations = (() => {
     for (let i = 1; i <= months; i++) {
       const { pmt, currentAmount, annualized } = stepper.next(i);
       endingContribution = currentAmount;
-      if (pmt > 0) {
+      if (atBeginning && pmt > 0) {
         sharesValue += pmt;
         invested += pmt;
       }
@@ -693,10 +735,15 @@ const Calculations = (() => {
         cashDividends += div;
       }
 
+      if (!atBeginning && pmt > 0) {
+        sharesValue += pmt;
+        invested += pmt;
+      }
+
       const balance = sharesValue + cashDividends;
       rows.push({
         period: i,
-        label: `Month ${i}`,
+        label: periodLabel(i, 12),
         invested,
         earnings: balance - invested,
         balance,
@@ -771,7 +818,7 @@ const Calculations = (() => {
       contribution,
       contribFreq,
       contribGrowth: input.contribGrowth,
-      contribAfterStart: input.contribAfterStart !== false,
+      contribTiming: timingFromInput(input),
     });
     const displayRows = months > 120
       ? downsampleToYears(result.rows)
@@ -1198,7 +1245,7 @@ const Calculations = (() => {
         contribution: Number(input.contribution) || 0,
         contribFreq: input.contribFreq,
         contribGrowth: input.contribGrowth,
-        contribAfterStart: input.contribAfterStart !== false,
+        contribTiming: timingFromInput(input),
       });
     }
 
@@ -1246,17 +1293,26 @@ const Calculations = (() => {
         contribFreq: input.contribFreq || "monthly",
         stepsPerYear,
         growth: input.contribGrowth,
-        contribAfterStart: input.contribAfterStart !== false,
+        contribTiming: timingFromInput(input),
       });
+      const atBeginning = stepper.atBeginning;
       let balance = Number(input.principal) || 0;
       let invested = balance;
       for (let i = 1; i <= steps; i++) {
         const { pmt } = stepper.next(i);
-        if (pmt > 0) {
-          balance += pmt;
-          invested += pmt;
+        if (atBeginning) {
+          if (pmt > 0) {
+            balance += pmt;
+            invested += pmt;
+          }
+          balance *= 1 + ratePerStep;
+        } else {
+          balance *= 1 + ratePerStep;
+          if (pmt > 0) {
+            balance += pmt;
+            invested += pmt;
+          }
         }
-        balance *= 1 + ratePerStep;
       }
       return {
         rows: [],
@@ -1283,7 +1339,7 @@ const Calculations = (() => {
         contribution: Number(input.contribution) || 0,
         contribFreq: input.contribFreq,
         contribGrowth: input.contribGrowth,
-        contribAfterStart: input.contribAfterStart !== false,
+        contribTiming: timingFromInput(input),
       });
     }
 
@@ -1305,8 +1361,9 @@ const Calculations = (() => {
       contribFreq,
       stepsPerYear: 12,
       growth: input.contribGrowth,
-      contribAfterStart: input.contribAfterStart !== false,
+      contribTiming: timingFromInput(input),
     });
+    const atBeginning = stepper.atBeginning;
     const monthlyPrice = priceReturn / 100 / 12;
     const monthlyExpense = expenseRatio / 100 / 12;
     const monthlyDiv = dividendYield / 100 / 12;
@@ -1316,7 +1373,7 @@ const Calculations = (() => {
     let cashDividends = 0;
     for (let i = 1; i <= months; i++) {
       const { pmt } = stepper.next(i);
-      if (pmt > 0) {
+      if (atBeginning && pmt > 0) {
         sharesValue += pmt;
         invested += pmt;
       }
@@ -1325,6 +1382,10 @@ const Calculations = (() => {
       const divAmt = sharesValue * monthlyDiv;
       if (reinvest) sharesValue += divAmt;
       else cashDividends += divAmt;
+      if (!atBeginning && pmt > 0) {
+        sharesValue += pmt;
+        invested += pmt;
+      }
     }
     const balance = sharesValue + cashDividends;
     const effectiveRate = priceReturn + (reinvest ? dividendYield : 0) - expenseRatio;
@@ -1353,20 +1414,25 @@ const Calculations = (() => {
       contribFreq,
       stepsPerYear,
       growth: input.contribGrowth,
-      contribAfterStart: input.contribAfterStart !== false,
+      contribTiming: timingFromInput(input),
     });
+    const atBeginning = stepper.atBeginning;
     let balance = principal;
     let invested = principal;
     let bonusCash = 0;
     for (let i = 1; i <= steps; i++) {
       const { pmt } = stepper.next(i);
-      if (pmt > 0) {
+      if (atBeginning && pmt > 0) {
         balance += pmt;
         invested += pmt;
       }
       const bonusBase = Math.min(balance, bonusCap);
       bonusCash += bonusBase * (bonusApr / 100) * (daysPerStep / DAYS_YEAR);
       balance *= 1 + regularRate;
+      if (!atBeginning && pmt > 0) {
+        balance += pmt;
+        invested += pmt;
+      }
     }
     const total = balance + bonusCash;
     const eff = estimateBlendedApr(principal, regularApr, bonusApr, bonusCap);

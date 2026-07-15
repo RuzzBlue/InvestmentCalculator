@@ -223,24 +223,24 @@
   }
 
   function bindContribTiming() {
-    document.querySelectorAll(".contrib-after-start").forEach((el) => {
-      el.addEventListener("change", () => syncContribTimingLabel(el.dataset.timingPrefix));
-      syncContribTimingLabel(el.dataset.timingPrefix);
+    document.querySelectorAll(".contrib-timing-toggle").forEach((group) => {
+      group.querySelectorAll(".contrib-timing-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          group.querySelectorAll(".contrib-timing-btn").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          group.dataset.timing = btn.dataset.timing || "beginning";
+        });
+      });
+      const active = group.querySelector(".contrib-timing-btn.active");
+      group.dataset.timing = active?.dataset.timing || "beginning";
     });
   }
 
-  function syncContribTimingLabel(prefix) {
-    if (!prefix) return;
-    const checked = document.getElementById(`${prefix}-contrib-after-start`)?.checked;
-    const label = document.querySelector(`label.contrib-timing-label[for="${prefix}-contrib-after-start"]`);
-    if (label) {
-      label.textContent = checked ? "after starting amount" : "with starting amount";
-    }
-  }
-
-  function readContribAfterStart(prefix) {
-    const el = document.getElementById(`${prefix}-contrib-after-start`);
-    return el ? el.checked : true;
+  function readContribTiming(prefix) {
+    const group = document.getElementById(`${prefix}-contrib-timing`);
+    const fromBtn = group?.querySelector(".contrib-timing-btn.active")?.dataset.timing;
+    const timing = fromBtn || group?.dataset.timing || "beginning";
+    return timing === "end" ? "end" : "beginning";
   }
 
   function bindContributionGrowth() {
@@ -291,7 +291,7 @@
         years: val("inv-years"),
         contribution: val("inv-contribution"),
         contribFreq: sel("inv-contrib-freq"),
-        contribAfterStart: readContribAfterStart("inv"),
+        contribTiming: readContribTiming("inv"),
         contribGrowth: readContribGrowth("inv"),
         rate: val("inv-rate"),
         compound: sel("inv-compound"),
@@ -308,7 +308,7 @@
         asset: sel("cry-asset"),
         contribution: val("cry-contribution"),
         contribFreq: sel("cry-contrib-freq"),
-        contribAfterStart: readContribAfterStart("cry"),
+        contribTiming: readContribTiming("cry"),
         contribGrowth: readContribGrowth("cry"),
         period: val("cry-period"),
         periodUnit: sel("cry-period-unit"),
@@ -331,7 +331,7 @@
         principal: val("etf-principal"),
         contribution: val("etf-contribution"),
         contribFreq: sel("etf-contrib-freq"),
-        contribAfterStart: readContribAfterStart("etf"),
+        contribTiming: readContribTiming("etf"),
         contribGrowth: readContribGrowth("etf"),
         period: val("etf-period"),
         periodUnit: sel("etf-period-unit"),
@@ -612,7 +612,7 @@
     if (s.selfFund) {
       push({
         label: "Self-funding from",
-        value: String(s.selfFund.label || "-"),
+        value: formatSelfFundLabel(s.selfFund, result),
         sub: "Earnings alone cover ongoing deposits",
       });
     }
@@ -650,22 +650,6 @@
       });
     }
 
-    // Fill remaining slots with scenario totals (avoid if situational cards already crowded)
-    if (sc.best) {
-      push({
-        label: "Best-case balance",
-        value: money(sc.best.finalBalance),
-        sub: "+20% rate scenario",
-      });
-    }
-    if (sc.worst) {
-      push({
-        label: "Worst-case balance",
-        value: money(sc.worst.finalBalance),
-        sub: "-20% rate scenario",
-      });
-    }
-
     return cards.slice(0, 8);
   }
 
@@ -673,6 +657,33 @@
     if (y < 1 / 12) return `${Math.round(y * 365)} days`;
     if (y < 1) return `${(y * 12).toFixed(1)} months`;
     return `${Number(y.toFixed(2))} years`;
+  }
+
+  /** Prefer M# Y# / Q# Y# style for the self-funding metric card. */
+  function formatSelfFundLabel(selfFund, result) {
+    const raw = String(selfFund?.label || "").trim();
+    if (!raw || raw === "-") return "-";
+    if (/^M\d+\s*Y\d+/i.test(raw) || /^Q\d+\s*Y\d+/i.test(raw) || /^Year\s+\d+/i.test(raw)) {
+      return raw;
+    }
+    const monthOnly = /^Month\s+(\d+)$/i.exec(raw);
+    if (monthOnly) {
+      const i = Number(monthOnly[1]);
+      return `M${((i - 1) % 12) + 1} Y${Math.ceil(i / 12)}`;
+    }
+    const dayOnly = /^Day\s+(\d+)$/i.exec(raw);
+    if (dayOnly) {
+      const d = Number(dayOnly[1]);
+      const year = Math.ceil(d / 365);
+      const dayInYear = ((d - 1) % 365) + 1;
+      const month = Math.min(12, Math.max(1, Math.ceil(dayInYear / 30.4167)));
+      return `Day ${d} · M${month} Y${year}`;
+    }
+    if (selfFund?.period > 0 && (result.displayUnit === "month" || result.compoundsPerYear === 12)) {
+      const i = Number(selfFund.period);
+      return `M${((i - 1) % 12) + 1} Y${Math.ceil(i / 12)}`;
+    }
+    return raw;
   }
 
   function renderTable(result) {
