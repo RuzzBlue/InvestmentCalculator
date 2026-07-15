@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YieldLens — Investment Calculator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet" />
+  <link href="css/styles.css" rel="stylesheet" />
+</head>
+<body>
+  <div class="app-bg" aria-hidden="true"></div>
+
+  <header class="app-header">
+    <div class="container-fluid px-3 px-lg-4">
+      <div class="d-flex align-items-center justify-content-between py-3">
+        <div class="brand d-flex align-items-center gap-2">
+          <span class="brand-mark" aria-hidden="true"><i class="fa-solid fa-chart-line"></i></span>
+          <div>
+            <h1 class="brand-name mb-0">YieldLens</h1>
+            <p class="brand-tag mb-0">See how your money actually compounds</p>
+          </div>
+        </div>
+        <button type="button" class="btn btn-learn" data-bs-toggle="modal" data-bs-target="#learnModal">
+          <i class="fa-solid fa-graduation-cap me-2"></i>Learn
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container-fluid px-3 px-lg-4 pb-5">
+    <div class="row g-4 align-items-start">
+      <!-- LEFT: Calculator -->
+      <div class="col-lg-5 col-xl-4">
+        <aside class="calc-panel" id="calcPanel">
+          <ul class="nav nav-pills calc-tabs mb-3" id="calcTypeTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="tab-investment" data-bs-toggle="pill" data-bs-target="#pane-investment" type="button" role="tab">
+                <i class="fa-solid fa-piggy-bank"></i><span>Investment</span>
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="tab-crypto" data-bs-toggle="pill" data-bs-target="#pane-crypto" type="button" role="tab">
+                <i class="fa-brands fa-bitcoin"></i><span>Crypto</span>
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="tab-etf" data-bs-toggle="pill" data-bs-target="#pane-etf" type="button" role="tab">
+                <i class="fa-solid fa-chart-pie"></i><span>Stocks / ETFs</span>
+              </button>
+            </li>
+          </ul>
+
+          <div class="tab-content" id="calcPanes">
+            <!-- INVESTMENT -->
+            <div class="tab-pane fade show active" id="pane-investment" role="tabpanel">
+              <form id="form-investment" class="calc-form" novalidate>
+                <div class="field">
+                  <label class="form-label" for="inv-principal">Starting amount</label>
+                  <div class="input-group">
+                    <span class="input-group-text">$</span>
+                    <input type="number" class="form-control" id="inv-principal" value="10000" min="0" step="100" required />
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="form-label" for="inv-years">Years to invest</label>
+                  <input type="number" class="form-control" id="inv-years" value="10" min="1" max="100" step="1" required />
+                </div>
+                <div class="field">
+                  <label class="form-label" for="inv-contribution">Additional contributions</label>
+                  <div class="input-group">
+                    <span class="input-group-text">$</span>
+                    <input type="number" class="form-control" id="inv-contribution" value="200" min="0" step="10" />
+                    <select class="form-select input-group-select" id="inv-contrib-freq">
+                      <option value="monthly" selected>Per month</option>
+                      <option value="quarterly">Per quarter</option>
+                      <option value="yearly">Per year</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="form-label" for="inv-rate">Hypothetical annual rate of return</label>
+                  <div class="input-group">
+                    <input type="number" class="form-control" id="inv-rate" value="7" min="0" max="100" step="0.01" required />
+                    <span class="input-group-text">%</span>
+                    <select class="form-select input-group-select" id="inv-compound">
+                      <option value="1">Annually</option>
+                      <option value="4">Quarterly</option>
+                      <option value="12" selected>Monthly</option>
+                      <option value="365">Daily</option>
+                    </select>
+                  </div>
+                  <div class="form-hint">How often interest is added back into the principal.</div>
+                </div>
+                <button type="submit" class="btn btn-calculate w-100">
+                  <i class="fa-solid fa-calculator me-2"></i>Calculate
+                </button>
+              </form>
+            </div>
+
+            <!-- CRYPTO -->
+            <div class="tab-pane fade" id="pane-crypto" role="tabpanel">
+              <form id="form-crypto" class="calc-form" novalidate>
+                <div class="field">
+                  <label class="form-label" for="cry-type">Type</label>
+                  <select class="form-select" id="cry-type">
+                    <option value="default">Default (flexible earn)</option>
+                    <option value="simple_earn">Simple Earn (regular + bonus APR)</option>
+                    <option value="fixed_term">Fixed Term</option>
+                    <option value="staking">Staking</option>
+                  </select>
+                </div>
+
+                <div class="field">
+                  <label class="form-label" for="cry-principal">Initial investment</label>
+                  <div class="input-group">
+                    <input type="number" class="form-control" id="cry-principal" value="5000" min="0" step="100" required />
+                    <select class="form-select input-group-select" id="cry-asset" style="max-width: 7rem;">
+                      <option value="USDT" selected>USDT</option>
+                      <option value="USDC">USDC</option>
+                      <option value="BTC">BTC</option>
+                      <option value="ETH">ETH</option>
+                      <option value="XAU">XAU</option>
+                      <option value="BNB">BNB</option>
+                      <option value="SOL">SOL</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="field" id="cry-contrib-wrap">
+                  <label class="form-label" for="cry-contribution">Additional contributions</label>
+                  <div class="input-group">
+                    <input type="number" class="form-control" id="cry-contribution" value="0" min="0" step="10" />
+                    <span class="input-group-text cry-symbol">USDT</span>
+                    <select class="form-select input-group-select" id="cry-contrib-freq">
+                      <option value="monthly" selected>Per month</option>
+                      <option value="quarterly">Per quarter</option>
+                      <option value="yearly">Per year</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Period: flexible (default / simple earn / staking) -->
+                <div class="field" id="cry-period-flex">
+                  <label class="form-label" for="cry-period">Investment period</label>
+                  <div class="input-group">
+                    <input type="number" class="form-control" id="cry-period" value="1" min="1" step="1" required />
+                    <select class="form-select input-group-select" id="cry-period-unit">
+                      <option value="years" selected>Years</option>
+                      <option value="months">Months</option>
+                      <option value="days">Days</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Period: fixed term -->
+                <div class="field d-none" id="cry-period-fixed">
+                  <label class="form-label" for="cry-fixed-term">Lock period</label>
+                  <select class="form-select" id="cry-fixed-term">
+                    <option value="7">7 days</option>
+                    <option value="14">14 days</option>
+                    <option value="15">15 days</option>
+                    <option value="30" selected>30 days</option>
+                    <option value="60">60 days</option>
+                    <option value="90">90 days</option>
+                    <option value="120">120 days</option>
+                    <option value="custom">Custom (specify days)</option>
+                  </select>
+                  <div class="mt-2 d-none" id="cry-custom-days-wrap">
+                    <input type="number" class="form-control" id="cry-custom-days" value="45" min="1" step="1" placeholder="Days" />
+                  </div>
+                </div>
+
+                <!-- Default / Staking rate -->
+                <div class="field" id="cry-rate-default">
+                  <label class="form-label" for="cry-apr" id="cry-apr-label">Annual interest rate (APR)</label>
+                  <div class="input-group">
+                    <input type="number" class="form-control" id="cry-apr" value="5" min="0" max="500" step="0.01" required />
+                    <span class="input-group-text">%</span>
+                  </div>
+                  <div class="form-hint" id="cry-apr-hint">Platforms quote APR. Rewards usually accrue daily (or even every minute).</div>
+                </div>
+
+                <!-- Simple Earn rates -->
+                <div class="field-group d-none" id="cry-simple-earn-fields">
+                  <div class="field">
+                    <label class="form-label" for="cry-regular-apr">Regular APR</label>
+                    <div class="input-group">
+                      <input type="number" class="form-control" id="cry-regular-apr" value="1.5" min="0" step="0.01" />
+                      <span class="input-group-text">%</span>
+                    </div>
+                    <div class="form-hint">Real-time / base APR — typically compounds into Earn balance.</div>
+                  </div>
+                  <div class="field">
+                    <label class="form-label" for="cry-bonus-apr">Bonus APR</label>
+                    <div class="input-group">
+                      <input type="number" class="form-control" id="cry-bonus-apr" value="5" min="0" step="0.01" />
+                      <span class="input-group-text">%</span>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label class="form-label" for="cry-bonus-cap">Bonus applies up to</label>
+                    <div class="input-group">
+                      <input type="number" class="form-control" id="cry-bonus-cap" value="2000" min="0" step="100" />
+                      <span class="input-group-text cry-symbol">USDT</span>
+                    </div>
+                    <div class="form-hint">Only this amount earns the bonus APR. The rest earns regular APR. Bonus rewards usually do <strong>not</strong> compound.</div>
+                  </div>
+                </div>
+
+                <!-- Fixed term rate -->
+                <div class="field d-none" id="cry-fixed-rate-wrap">
+                  <label class="form-label" for="cry-fixed-apr">Fixed annual rate (APR)</label>
+                  <div class="input-group">
+                    <input type="number" class="form-control" id="cry-fixed-apr" value="8" min="0" step="0.01" />
+                    <span class="input-group-text">%</span>
+                  </div>
+                  <div class="form-hint">Fixed term typically pays simple interest at maturity — no mid-term compounding.</div>
+                </div>
+
+                <button type="submit" class="btn btn-calculate w-100">
+                  <i class="fa-solid fa-calculator me-2"></i>Calculate
+                </button>
+              </form>
+            </div>
+
+            <!-- ETF / STOCKS -->
+            <div class="tab-pane fade" id="pane-etf" role="tabpanel">
+              <form id="form-etf" class="calc-form" novalidate>
+                <div class="field">
+                  <label class="form-label" for="etf-type">Type</label>
+                  <select class="form-select" id="etf-type">
+                    <option value="simple">Simple — generic return</option>
+                    <option value="advanced">ETF advanced</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label class="form-label" for="etf-principal">Initial investment</label>
+                  <div class="input-group">
+                    <span class="input-group-text">$</span>
+                    <input type="number" class="form-control" id="etf-principal" value="10000" min="0" step="100" required />
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="form-label" for="etf-contribution">Additional contributions</label>
+                  <div class="input-group">
+                    <span class="input-group-text">$</span>
+                    <input type="number" class="form-control" id="etf-contribution" value="300" min="0" step="10" />
+                    <select class="form-select input-group-select" id="etf-contrib-freq">
+                      <option value="monthly" selected>Per month</option>
+                      <option value="quarterly">Per quarter</option>
+                      <option value="yearly">Per year</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="form-label" for="etf-period">Investment period</label>
+                  <div class="input-group">
+                    <input type="number" class="form-control" id="etf-period" value="15" min="1" step="1" required />
+                    <select class="form-select input-group-select" id="etf-period-unit">
+                      <option value="years" selected>Years</option>
+                      <option value="months">Months</option>
+                      <option value="quarters">Quarters</option>
+                      <option value="days">Days</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="form-label" for="etf-return" id="etf-return-label">Annual return</label>
+                  <div class="input-group">
+                    <input type="number" class="form-control" id="etf-return" value="8" min="-50" max="100" step="0.01" required />
+                    <span class="input-group-text">%</span>
+                  </div>
+                  <div class="form-hint" id="etf-return-hint">Expected price appreciation (capital gains), before dividends.</div>
+                </div>
+
+                <div class="field-group d-none" id="etf-advanced-fields">
+                  <div class="field">
+                    <label class="form-label" for="etf-dividend">Dividend yield</label>
+                    <div class="input-group">
+                      <input type="number" class="form-control" id="etf-dividend" value="1.4" min="0" step="0.01" />
+                      <span class="input-group-text">%</span>
+                    </div>
+                    <div class="form-hint">e.g. VOO historically ~1.2–1.5% distribution yield.</div>
+                  </div>
+                  <div class="field">
+                    <label class="form-label" for="etf-expense">Expense ratio</label>
+                    <div class="input-group">
+                      <input type="number" class="form-control" id="etf-expense" value="0.03" min="0" max="5" step="0.001" />
+                      <span class="input-group-text">%</span>
+                    </div>
+                    <div class="form-hint">Annual fund fee dragged from assets (VOO ≈ 0.03%).</div>
+                  </div>
+                  <div class="field field-check">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="etf-reinvest" checked />
+                      <label class="form-check-label" for="etf-reinvest">Reinvest dividends (DRIP)</label>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label class="form-label" for="etf-withdraw-fee">Withdrawal fee</label>
+                    <div class="input-group">
+                      <input type="number" class="form-control" id="etf-withdraw-fee" value="0" min="0" max="100" step="0.01" />
+                      <span class="input-group-text">%</span>
+                    </div>
+                    <div class="form-hint">Does not change growth. Shown as “after withdraw” on results.</div>
+                  </div>
+                </div>
+
+                <button type="submit" class="btn btn-calculate w-100">
+                  <i class="fa-solid fa-calculator me-2"></i>Calculate
+                </button>
+              </form>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <!-- RIGHT: Results / Learn context -->
+      <div class="col-lg-7 col-xl-8">
+        <section class="results-panel" id="resultsPanel">
+          <!-- Pre-calculate context -->
+          <div id="preCalcView">
+            <div class="results-intro" id="contextPanel">
+              <!-- Filled by JS based on active calculator tab -->
+            </div>
+          </div>
+
+          <!-- Post-calculate results -->
+          <div id="resultsView" class="d-none">
+            <div class="results-toolbar">
+              <h2 class="results-title mb-0">Calculation Results</h2>
+              <div class="d-flex gap-2 flex-wrap">
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-reset-view" title="Back to guide">
+                  <i class="fa-solid fa-book-open me-1"></i>Guide
+                </button>
+                <button type="button" class="btn btn-export btn-sm" id="btn-export-pdf">
+                  <i class="fa-solid fa-file-pdf me-1"></i>Export PDF
+                </button>
+              </div>
+            </div>
+
+            <div id="exportRoot">
+              <p class="results-meta" id="resultsMeta"></p>
+
+              <div class="metric-grid" id="metricGrid">
+                <!-- metrics injected -->
+              </div>
+
+              <div class="section-block">
+                <h3 class="section-heading">Scenario comparison</h3>
+                <p class="section-sub">Same plan, three rate outcomes (±20% of your assumed rate).</p>
+                <div class="scenario-grid" id="scenarioGrid"></div>
+              </div>
+
+              <div class="section-block">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                  <h3 class="section-heading mb-0">Growth over time</h3>
+                  <span class="chart-mode-badge" id="chartModeBadge"></span>
+                </div>
+                <div class="chart-wrap">
+                  <canvas id="growthChart"></canvas>
+                </div>
+              </div>
+
+              <div class="section-block" id="compositionSection">
+                <h3 class="section-heading">Where the final balance comes from</h3>
+                <div class="chart-wrap chart-wrap-sm">
+                  <canvas id="compositionChart"></canvas>
+                </div>
+              </div>
+
+              <div class="section-block">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                  <h3 class="section-heading mb-0">Period breakdown</h3>
+                  <div class="table-controls">
+                    <label class="table-control-label" for="tablePageSize">Show</label>
+                    <select class="form-select form-select-sm table-page-size" id="tablePageSize">
+                      <option value="5">5</option>
+                      <option value="10" selected>10</option>
+                      <option value="25">25</option>
+                      <option value="50">50</option>
+                      <option value="all">All</option>
+                    </select>
+                    <span class="table-control-label">entries</span>
+                  </div>
+                </div>
+                <div class="table-responsive">
+                  <table class="table results-table" id="resultsTable">
+                    <thead>
+                      <tr>
+                        <th>Period</th>
+                        <th class="text-end">Invested</th>
+                        <th class="text-end">Earnings</th>
+                        <th class="text-end">Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody id="resultsTableBody"></tbody>
+                  </table>
+                </div>
+                <div class="table-pager" id="tablePager"></div>
+              </div>
+
+              <div class="section-block insights-block" id="insightsBlock"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <!-- LEARN MODAL -->
+  <div class="modal fade" id="learnModal" tabindex="-1" aria-labelledby="learnModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable modal-xl modal-dialog-centered">
+      <div class="modal-content learn-modal">
+        <div class="modal-header">
+          <h2 class="modal-title" id="learnModalLabel">Understand the numbers behind “APR”</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <ul class="nav nav-tabs learn-tabs" id="learnTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#learn-simple-vs-compound" type="button">Simple vs Compound</button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#learn-apr-apy" type="button">APR vs APY</button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#learn-compounding" type="button">How compounding works</button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#learn-crypto" type="button">Crypto Earn &amp; Staking</button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#learn-etf" type="button">ETFs &amp; Dividends</button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#learn-tips" type="button">Reading platforms</button>
+            </li>
+          </ul>
+          <div class="tab-content learn-content pt-3" id="learnTabContent">
+            <div class="tab-pane fade show active" id="learn-simple-vs-compound">
+              <h3>Simple interest</h3>
+              <p>Interest is earned only on your original principal. If you invest $1,000 at 10% simple interest for 3 years, you earn $100 each year → <strong>$300</strong> total interest. Balance ends at $1,300.</p>
+              <div class="learn-formula">Interest = Principal × Rate × Time</div>
+              <h3 class="mt-4">Compound interest</h3>
+              <p>Interest is earned on principal <em>plus</em> previously earned interest. Same $1,000 at 10% compounded annually for 3 years:</p>
+              <ul>
+                <li>Year 1: $1,000 → $1,100</li>
+                <li>Year 2: $1,100 → $1,210</li>
+                <li>Year 3: $1,210 → <strong>$1,331</strong></li>
+              </ul>
+              <p>You earned an extra <strong>$31</strong> just because interest itself earned interest. Over decades, that gap becomes the main story of investing.</p>
+              <div class="learn-callout">
+                <strong>What platforms hide:</strong> many products advertise a shiny “APR” but never say whether rewards compound back into the earning balance, sit in Spot as cash, or only settle at maturity (simple interest for the lock period).
+              </div>
+            </div>
+
+            <div class="tab-pane fade" id="learn-apr-apy">
+              <h3>APR — Annual Percentage Rate</h3>
+              <p>The nominal yearly rate <strong>without</strong> including the effect of compounding. Crypto earn products almost always quote <strong>APR</strong>.</p>
+              <h3 class="mt-4">APY — Annual Percentage Yield</h3>
+              <p>The effective yearly return <strong>including</strong> compounding. Banks and high-yield savings often quote APY because it looks higher for the same underlying rate.</p>
+              <div class="learn-formula">APY = (1 + APR ÷ n)<sup>n</sup> − 1 &nbsp;&nbsp; where n = compounds per year</div>
+              <p class="mt-3">Example: 5% APR compounded daily ≈ <strong>5.13% APY</strong>. Monthly ≈ 5.12% APY. Annually = exactly 5% APY.</p>
+              <div class="learn-callout">
+                <strong>Rule of thumb:</strong> when comparing a crypto “5% APR” to a bank “5% APY”, the bank product is slightly better if both truly compound — because APY already baked in the compounding. Always convert to the same measure before comparing.
+              </div>
+            </div>
+
+            <div class="tab-pane fade" id="learn-compounding">
+              <h3>Frequency changes the curve</h3>
+              <p>Same APR, different compounding schedules, produce different balances:</p>
+              <div class="table-responsive">
+                <table class="table table-sm learn-table">
+                  <thead>
+                    <tr><th>Frequency</th><th>n / year</th><th>$10,000 @ 8% for 10 years</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>Annually</td><td>1</td><td>$21,589</td></tr>
+                    <tr><td>Quarterly</td><td>4</td><td>$22,080</td></tr>
+                    <tr><td>Monthly</td><td>12</td><td>$22,196</td></tr>
+                    <tr><td>Daily</td><td>365</td><td>$22,254</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p>Moving from annual → daily matters, but less than people expect for moderate rates. The bigger lever is usually <strong>how long</strong> you stay invested and whether contributions continue.</p>
+              <h3 class="mt-4">Contributions compound too</h3>
+              <p>Money you add each month also starts earning. A calculator that only compounds the starting amount understates real dollar-cost-averaging plans.</p>
+            </div>
+
+            <div class="tab-pane fade" id="learn-crypto">
+              <h3>Flexible / Simple Earn (Binance-style)</h3>
+              <p>Rewards usually split into two layers:</p>
+              <ul>
+                <li><strong>Regular (real-time) APR</strong> — applies to your full subscribed balance. On Binance Flexible, it can accrue as often as every minute and is added back into Earn, so it <em>does</em> compound.</li>
+                <li><strong>Bonus / tiered APR</strong> — promo rate on only the first X tokens (e.g. first $2,000). Typically calculated <em>daily</em>, paid to Spot, and <strong>does not compound</strong> into the Earn balance.</li>
+              </ul>
+              <div class="learn-formula">Daily bonus ≈ min(balance, bonusCap) × BonusAPR ÷ 365</div>
+              <p class="mt-3">Anything above the bonus cap only earns the regular APR.</p>
+
+              <h3 class="mt-4">Fixed Term / Locked</h3>
+              <p>You lock funds for 7–120 days (etc.) at a fixed APR. Exchanges such as Bybit typically calculate:</p>
+              <div class="learn-formula">Yield = Principal × APR ÷ 365 × LockDays</div>
+              <p class="mt-3">Principal + yield return at maturity. <strong>No compounding during the lock</strong> unless you manually reinvest into a new term after maturity.</p>
+
+              <h3 class="mt-4">Staking</h3>
+              <p>You lock (or soft-lock) assets to secure a network or a platform staking pool. Rewards are usually quoted as APR/APY and credited periodically (often daily). Modeling daily compounding of the staking APR is a reasonable average assumption when rewards auto-restake; if rewards sit idle in Spot, treat them closer to simple interest unless you restake manually.</p>
+
+              <div class="learn-callout">
+                <strong>Promo trap:</strong> “Up to 200% APR” almost always means a tiny tier or a short campaign window. Always check the bonus cap and the regular APR that applies afterward.
+              </div>
+            </div>
+
+            <div class="tab-pane fade" id="learn-etf">
+              <h3>What “return” means for an ETF</h3>
+              <p>Total shareholder return comes from:</p>
+              <ol>
+                <li><strong>Price appreciation</strong> — the ETF share price rises with its holdings.</li>
+                <li><strong>Dividends / distributions</strong> — cash paid from underlying stock dividends (and sometimes capital gains).</li>
+                <li><strong>Minus the expense ratio</strong> — the fund’s annual fee, taken continuously from assets (~0.03% for VOO, much higher for active funds).</li>
+              </ol>
+              <h3 class="mt-4">DRIP vs cash dividends</h3>
+              <p>With dividend reinvestment (DRIP), distributions buy more shares and compound. Without DRIP, price grows net of expenses, while dividends accumulate as separate cash (they still count as earnings, but they stop compounding inside the ETF).</p>
+              <div class="learn-formula">Net growth ≈ PriceReturn + (DividendYield if reinvested) − ExpenseRatio</div>
+              <h3 class="mt-4">Withdrawal fees</h3>
+              <p>Some apps charge a fee when you cash out. That fee does not change how the investment grows — it only reduces what you actually receive when you leave. YieldLens shows both balances when a withdrawal fee is set.</p>
+            </div>
+
+            <div class="tab-pane fade" id="learn-tips">
+              <h3>How to read exchange and broker pages</h3>
+              <ul class="learn-checklist">
+                <li><i class="fa-solid fa-check"></i> Is the number labeled <strong>APR or APY</strong>?</li>
+                <li><i class="fa-solid fa-check"></i> Does interest go back into the earning product, or into Spot/Funding?</li>
+                <li><i class="fa-solid fa-check"></i> Is there a <strong>bonus tier cap</strong> (first $X only)?</li>
+                <li><i class="fa-solid fa-check"></i> Fixed term = usually <strong>simple interest for the lock</strong>.</li>
+                <li><i class="fa-solid fa-check"></i> For ETFs: check dividend yield, expense ratio, and whether your broker supports DRIP.</li>
+                <li><i class="fa-solid fa-check"></i> Rates change — projections are hypothetical, not forecasts.</li>
+              </ul>
+              <p class="mt-3 mb-0">Use the three scenario cards (expected / best / worst) to stress-test a plan instead of trusting a single optimistic rate.</p>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="js/calculations.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/pdf-export.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
